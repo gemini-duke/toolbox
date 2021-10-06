@@ -1,0 +1,635 @@
+---
+title: "Interrupted time-series analysis"
+
+author: "@souzajvp"
+institute: "GEMINI data science meeting"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    css: css/custom-en.css
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      ratio: 16:9
+      countIncrementalSlides: false
+---
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(astsa)
+library(forecast)
+library(dplyr)
+library(zoo)
+library(comprehenr)
+library(ggplot2)
+library(scales)
+library(gtsummary)
+library(foreign) ; library(tsModel) ; library("lmtest") ; library("Epi")
+library("splines") ; library("vcd")
+library(ggplot2); library(dplyr); library(gtsummary)
+
+data <- read.csv("sicily.csv")
+```
+
+class: inverse, middle, center
+
+# Time series recap
+
+.footnote[
+See [Codes](https://github.com/souzajvp/educational/tree/main/S%C3%A9ries-temporais), [Video](https://drive.google.com/file/d/15V2jBSn5a3T5WnSWuX7vi_ZnbtfwmEkb/view?usp=sharing) and [SOP-??]() for materials of the previous pres.
+]
+
+---
+
+## Recap
+
+--
+
+Data is recorded in an **ordered fashion** and in equally spaced intervals:
+- Number of people hospitalized by a given condition every month;
+
+--
+
+Most common data type are **counts**, but **rates** and **means** can also be used. 
+
+--
+
+### Distributions
+
+**Poisson** is frequently used for count data -> **discrete** and **positive**. 
+
+--
+
+**Normal** (*OLS, linear regression*) assumes that values can take any real value:
+- problematic for count data -> *we had -10.2 tuberculosis cases*
+
+---
+background-image: url(https://otexts.com/fpp2/fpp_files/figure-html/fourexamples-1.png)
+background-size: 650px
+background-position: 50% 80%
+
+### Behavior
+
+**Seasonality**, **trend** and **noise**.
+
+.footnote[
+[Source](https://otexts.com/fpp2/tspatterns.html)
+]
+
+---
+
+### Auto-correlation
+
+We expect that neighbor data points have similar values;
+
+--
+
+Lags
+
+```{r, include=TRUE, fig.show=TRUE, fig.align="center", echo=FALSE, message=FALSE, warning=FALSE}
+knitr::include_graphics("https://raw.githubusercontent.com/gemini-duke/toolbox/main/time-series/interrupted-time-series/img/lag-explanation.PNG")
+```
+
+---
+
+class: inverse, middle, center
+# Interrupted time series analysis
+
+#### What would we get if *the intervention did not happen*?
+
+
+.footnote[
+See [Codes](https://github.com/gemini-duke/toolbox/tree/main/time-series/interrupted-time-series), [Video-TBD]() and [SOP??]() for material on this pres.
+]
+
+---
+
+## ITS
+
+*Quasi-experimental* design;
+
+--
+
+The **ITS** study design is one valuable alternative to **measure the impact of interventions** when RCTs can not be applied;
+
+--
+
+**ITS** is particularly suited to interventions that are introduced at a **population level**, over a **cleary defined time period** and that target **population-level health outcomes**;
+
+--
+
+It has been applied to many different scenarios:
+- vaccination;
+- traffic speed zones;
+- unplanned events (e.g. global crisis, climate events)
+
+
+---
+
+## ITS
+
+Sample data set - Acute coronary events (ACE) in Sicily before and after the **ban of smoking in public places**.
+```{r, echo=FALSE, include=TRUE, message=FALSE, warning=FALSE, fig.show=TRUE}
+knitr::kable(head(data), format = 'html')
+```
+.footnote[
+[Interrupted time series regression for the evaluation of public health interventions: a tutorial](https://academic.oup.com/ije/article/46/1/348/2622842#112547752)
+]
+
+---
+
+## ITS
+```{r, fig.align = "center" ,fig.show=TRUE, echo=FALSE, eval=TRUE, fig.height=4, dev='svg', include=TRUE}
+
+# head(data)
+data$rate <- with(data, aces/stdpop*10^5)
+# png("rplot.png", width = 600, height = 400)
+plot(data$rate,type="n",ylim=c(00,300),xlab="Year", ylab="Std rate x 10,000",
+  bty="l",xaxt="n")
+# shade the post intervention period grey
+rect(36,0,60,300,col=grey(0.9),border=F)
+
+# plot the observed rate for pre-intervention period
+points(data$rate[data$smokban==0],cex=0.7)
+points(c(rep(NA, each=36), data$rate[data$smokban==1]),cex=0.7, col="red")
+#specify the x-axis (i.e. time units)
+axis(1,at=0:5*12,labels=F)
+axis(1,at=0:4*12+6,tick=F,labels=2002:2006)
+# add a title
+title("ACE events in Sicily, 2002-2006")
+```
+.footnote[
+[Interrupted time series regression for the evaluation of public health interventions: a tutorial](https://academic.oup.com/ije/article/46/1/348/2622842#112547752)
+]
+
+---
+class: inverse, middle, center
+
+# Step 1: Is an ITS design appropriate?
+
+---
+background-image: url(https://raw.githubusercontent.com/gemini-duke/toolbox/main/time-series/interrupted-time-series/img/Intervention.png)
+background-size: 650px
+background-position: 45% 95%
+
+## The intervention
+
+No requirement that the intervention is implemented **overnight.**
+
+The mechanism of intervention will likely impact the outcome:
+
+- **overnight** implementation might have a **sharp impact** (level) on the outcome;
+- **roll-out** implementation might cause a **less perceptive** (slope) change.
+
+---
+
+## The outcome
+
+ITS works best with outcomes that are **expected to change relatively quickly** after the intervention.
+
+--
+
+- active and passive smoking vs ACE ✅;
+
+--
+
+- active and passive smoking vs lung cancer ❌.
+
+---
+
+## Data requirements
+
+No limits regarding **number of points**, as power depends on other factors (e.g. variability, strength of the effects).
+
+--
+
+More is **not allways better**: current trends versus historical trends;
+
+--
+
+Equal distribution of points before and after the intervention is **recommended**, although not always **practical**.
+
+---
+class: inverse, middle, center
+
+# Step 2: Proposing the impact model
+
+---
+
+## Formulating a hypothesis
+
+**How the intervention would impact the outcome** if it were effective?
+
+--
+
+This should be done *a priori* considering **existing literature**, **knowledge of the intervention** and its **mechanism on the outcome**.
+
+--
+
+Relying on the outcome data to select the best impact model is discouraged ❌:
+- detection of effect by chance or random fluctuations;
+- artefactual conclusions.
+
+---
+background-image: url(https://raw.githubusercontent.com/gemini-duke/toolbox/main/time-series/interrupted-time-series/img/impact_models.png)
+background-size: 800px
+background-position: 50% 60%
+
+#### Impact models
+
+$$Y_{t} = \alpha \, + \, \beta _{1} \, * \, time \, + \, \beta _{2} \, * \, smokban \,  + \, \varepsilon _{t}$$ 
+
+.footnote[
+[Interrupted time series regression for the evaluation of public health interventions: a tutorial](https://academic.oup.com/ije/article/46/1/348/2622842#112547752)
+]
+
+---
+
+# Step 3: Descriptive analysis
+
+- Summary statistics;
+
+--
+
+- Bi-variate comparisons (e.g. before versus after the intervention);
+
+--
+
+- Scatter plots;
+
+---
+
+## Step 3: Descriptive analysis
+```{r, echo=FALSE}
+stat <-  all_continuous() ~ c("{median} ({p25}, {p75})", 
+                              "{min}, {max}", "{mean}, {sd}")
+types <- list(all_continuous() ~ "continuous2")
+
+var_names <- list(rate~"Rate ACE",
+                  aces~"Raw ACE")
+```
+
+```{r, include=TRUE, echo=FALSE, warning=FALSE, message=FALSE}
+data %>% select(aces,rate,smokban) %>% 
+  mutate(smokban=(car::recode(smokban, "0='Before';1='After'"))) %>% 
+  tbl_summary(by=smokban, statistic=stat, type=types, label=var_names) %>% add_p() %>% bold_labels() %>% bold_p() %>% as_gt() %>% gt::tab_header(gt::md("**ACE events before and after the smoke ban**"))
+```
+
+---
+class: inverse, middle, center
+
+# Step 4: Modelling
+
+---
+
+## Segmented regression
+
+--
+
+Simplest and easiest way to model an ITS
+
+--
+
+Briefly, segmented (or *piecewise*) regression fits two regressions: **before** and **after** the intervention.
+
+--
+
+```{r, fig.align = "center" ,fig.show=TRUE, echo=FALSE, eval=TRUE, fig.height=4, dev='svg', include=TRUE}
+
+# head(data)
+data$rate <- with(data, aces/stdpop*10^5)
+# png("rplot.png", width = 600, height = 400)
+plot(data$rate,type="n",ylim=c(00,300),xlab="Year", ylab="Std rate x 10,000",
+  bty="l",xaxt="n")
+# shade the post intervention period grey
+rect(36,0,60,300,col=grey(0.9),border=F)
+
+# plot the observed rate for pre-intervention period
+points(data$rate[data$smokban==0],cex=0.7)
+points(c(rep(NA, each=36), data$rate[data$smokban==1]),cex=0.7, col="red")
+#specify the x-axis (i.e. time units)
+axis(1,at=0:5*12,labels=F)
+axis(1,at=0:4*12+6,tick=F,labels=2002:2006)
+# add a title
+title("ACE events in Sicily, 2002-2006")
+```
+
+
+
+---
+
+## Segmented regression
+
+```{r, echo=TRUE, include=TRUE}
+model1 <- glm(aces ~ offset(log(stdpop)) + smokban + time, family=poisson, data)
+```
+
+```{r, include=TRUE, echo=FALSE}
+model1 %>%
+  tbl_regression(label=list(smokban~"Smoke ban", time~"Time")) %>%
+  bold_p() %>%
+  bold_labels() %>% as_gt() %>% gt::tab_header("Segmented regression model")
+```
+.footnote[**Level
+]
+
+---
+
+## Segmented regression
+
+```{r, fig.align = "center" ,fig.show=TRUE, echo=FALSE, eval=TRUE, fig.height=4, dev='svg', include=TRUE, warning=FALSE, message=FALSE}
+
+data$smokban_recoded <- as.factor(car::recode(data$smokban, "0='Before';1='After'"))
+model1 <- glm(aces ~ offset(log(stdpop)) + smokban + time, family=poisson, data) 
+# model1 %>% 
+#   tbl_regression(label=list(smokban~"Smoke ban", time~"Time")) %>% 
+#   bold_p() %>% 
+#   bold_labels()
+
+datanew <- data.frame(stdpop=mean(data$stdpop),smokban=rep(c(0,1),c(360,240)),
+  time= 1:600/10,month=rep(1:120/10,5))
+# We generate predicted values based on the model in order to create a plot
+pred1 <- predict(model1,type="response",datanew)/mean(data$stdpop)*10^5
+
+
+plot(data$rate,type="n",ylim=c(0,300),xlab="Year",ylab="Std rate x 10,000",
+  bty="l",xaxt="n")
+rect(36,0,60,300,col=grey(0.9),border=F)
+points(data$rate,cex=0.7)
+axis(1,at=0:5*12,labels=F)
+axis(1,at=0:4*12+6,tick=F,labels=2002:2006)
+lines((1:600/10),pred1,col=2)
+title("Sicily, 2002-2006")
+
+# to plot the counterfactual scenario we create a data frame as if smokban
+#   (the intervention) was never being implemented
+datanew <- data.frame(stdpop=mean(data$stdpop),smokban=0,time=1:600/10,
+  month=rep(1:120/10,5))
+
+# generate predictions under the counterfactual scenario and add it to the plot
+pred1b <- predict(model1,datanew,type="response")/mean(data$stdpop)*10^5
+lines(datanew$time,pred1b,col=2,lty=2)
+
+# return the data frame to the scenario including the intervention
+datanew <- data.frame(stdpop=mean(data$stdpop),smokban=rep(c(0,1),c(360,240)),
+  time= 1:600/10,month=rep(1:120/10,5))
+```
+
+---
+
+## Segmented regression
+### Considerations
+
+A key assumption of linear regression is that the errors (residuals) are **independent** and **not correlated**;
+
+--
+
+Assumption that the behavior is linear.
+
+--
+
+When segmented regression fails, other models can be used.
+
+---
+
+## Segmented regression
+### Considerations
+
+```{r, fig.align = "center" ,fig.show=TRUE, echo=FALSE, eval=TRUE, fig.height=4, dev='svg', include=TRUE, message=FALSE, warning=FALSE}
+checkresiduals(model1)
+Box.test(model1$residuals, lag = 24, type = "Ljung-Box")
+```
+
+---
+
+## ARIMA models
+
+Autoregressive Integrated Moving Average
+
+--
+
+Allow for modelling of data with complex behaviors:
+- Do not assume linearity.
+
+--
+
+Can handle seasonality and autocorrelation.
+
+---
+
+## ARIMA models
+
+An ARIMA model is a combination of an *Autoregressive* model, *Moving average* model  and *differencing*.
+
+The basic notation for describing a non-seasonal ARIMA model is (p, d, q):
+
+- **p** = the order of the AR part of the model;
+- **d** = the degree of non-seasonal differencing;
+- **q** = the order of the MA part of the model.
+
+If there is seasonality, the ARIMA model is expressed as *(p, d, q)* × *(P, D, Q)s*
+
+
+---
+class: inverse, middle, center
+
+# Case study
+
+### COVID-19 and mental health admissions in Brazil (2015-2020)
+
+---
+
+## The data
+
+Mental health-related hospital admissions in Brazil --> stratify by **sex**, **ethnicity**, **state/region**, **age** and **ICD chapter**.
+
+
+```{r, echo=FALSE}
+adm <- read.csv("/media/newhd/joao-souza/projects/GEMINI/suicide_br_2020/mental_health_r.csv")
+
+adm$casos <- 1
+
+adm$DT_INTER_C <- as.POSIXct(as.character(adm$DT_INTER), format="%Y%m%d")
+
+cases <- adm %>% mutate(date=format(DT_INTER_C, "%Y-%m")) %>% 
+  group_by(date) %>% summarise(total = sum(casos))
+```
+
+```{r, echo=FALSE}
+rm(adm)
+```
+
+
+```{r, echo=FALSE}
+# Create time series object to facilitate filtering of the period
+cases.ts <- ts(as.numeric(cases$total), frequency=12, start=c(2007,12))
+```
+
+
+```{r, echo=FALSE}
+# Selecting values starting in January 2015
+filter <- (as.yearmon(time(cases.ts))>='Jan 2015')
+cases.ts.filter <- ts((cases.ts[filter]), frequency = 12, start=c(2015,01))
+# dummy variable that indicates if it was already pandemic
+pandemic <- as.numeric(as.yearmon(time(cases.ts.filter))>='Mar 2020')
+
+# data.frame with all the variables
+adm.2015 <- data.frame(year=to_vec(for(i in seq(2015,2020)) rep(i,12)),
+                         month=rep(seq(1,12),6),
+                         admissions=c(cases.ts.filter),
+                         time=seq(1,length(pandemic),1),
+                         pandemic=pandemic)
+```
+
+
+```{r, echo=FALSE, eval=TRUE}
+knitr::kable(head(adm.2015), format = 'html')
+```
+
+---
+
+## The data
+```{r, fig.align = "center" ,fig.show=TRUE, echo=FALSE, eval=TRUE, fig.height=4, dev='svg', include=TRUE}
+
+plot(adm.2015$admissions,type="n",xlab="Year",ylab="Admissions",
+  bty="l",xaxt="n")
+rect(62,0,72,16000,col=grey(0.9),border=F)
+points(adm.2015$admissions,cex=0.7)
+axis(1,at=0:6*12,labels=F)
+axis(1,at=0:5*12+6,tick=F,labels=2015:2020)
+title("Overall mental health admissions - Brazil, 2015-2020")
+```
+
+---
+
+# Proposing a model
+
+```{r, include=TRUE}
+model <- glm(admissions ~ pandemic + time, family=poisson, adm.2015) 
+```
+
+
+```{r, echo=FALSE, include=TRUE}
+model %>% tbl_regression(label=list(pandemic~"Pandemic", time~"Time")) %>% 
+  bold_p() %>% 
+  bold_labels()
+```
+
+---
+
+## Plot model
+
+```{r, fig.align = "center" ,fig.show=TRUE, echo=FALSE, eval=TRUE, fig.height=4, dev='svg', include=TRUE}
+# datanew <- data.frame(stdpop=mean(data$stdpop),pandemic=rep(c(0,1),c(620,100)),
+#   time= 1:72/10,month=rep(1:120/10,5))
+datanew <- data.frame(pandemic=rep(c(0,1),c(620,100)),
+           time= 1:720/10,month=rep(1:120/10,6))
+# We generate predicted values based on the model in order to create a plot
+pred1 <- predict(model,type="response",datanew)
+
+plot(adm.2015$admissions,type="n",xlab="Year",ylab="Admissions",
+  bty="l",xaxt="n")
+rect(62,0,72,16000,col=grey(0.9),border=F)
+points(adm.2015$admissions,cex=0.7)
+axis(1,at=0:6*12,labels=F)
+axis(1,at=0:5*12+6,tick=F,labels=2015:2020)
+lines((1:720/10),pred1,col=2)
+title("Brazil, 2015-2020")
+
+
+# to plot the counterfactual scenario we create a data frame as if smokban
+#   (the intervention) was never being implemented
+datanew <- data.frame(pandemic=0,
+                      time= 1:720/10,month=rep(1:120/10,6))
+
+pred1b <- predict(model,datanew,type="response")
+lines(datanew$time,pred1b,col=2,lty=2)
+
+# return the data frame to the scenario including the intervention
+datanew <- data.frame(pandemic=rep(c(0,1),c(620,100)),
+                      time=1:720/10,
+                      month=rep(1:120/10,6))
+```
+
+---
+
+## Adjusting for seasonality
+<!-- There are various ways of adjusting for seasonality - here we use harmonic terms specifying the number of sin and cosine pairs to include (in this case 2) and the length of the period (12 months) -->
+
+```{r, incldue=TRUE}
+model3 <- glm(admissions ~ pandemic + time + harmonic(month,2,12), 
+              family=quasipoisson, adm.2015)
+```
+
+
+```{r, echo=FALSE, include=FALSE}
+model3 %>%  tbl_regression(label=list(pandemic~"Pandemic", time~"Time")) %>% 
+  bold_p() %>% 
+  bold_labels()
+
+```
+
+```{r, echo=FALSE, include=FALSE}
+res3 <- residuals(model3,type="deviance")
+plot(res3,ylim=c(-5,10),pch=19,cex=0.7,col=grey(0.6),main="Residuals over time",
+  ylab="Deviance residuals",xlab="Date")
+abline(h=0,lty=2,lwd=2)
+acf(res3)
+pacf(res3)
+```
+
+
+```{r, fig.align = "center" ,fig.show=TRUE, echo=FALSE, eval=TRUE, fig.height=4, dev='svg', include=TRUE}
+
+pred3 <- predict(model3,type="response",datanew)
+
+plot(adm.2015$admissions,type="n",xlab="Year",ylab="Admissions",
+  bty="l",xaxt="n")
+
+rect(62,0,72,16000,col=grey(0.9),border=F)
+points(adm.2015$admissions,cex=0.7)
+axis(1,at=0:6*12,labels=F)
+axis(1,at=0:5*12+6,tick=F,labels=2015:2020)
+lines((1:720/10),pred3,col=2)
+title("Brazil, 2015-2020")
+
+# it is sometimes difficult to clearly see the change graphically in the
+#   seasonally adjusted model, therefore it can be useful to plot a straight
+#   line representing a 'deseasonalised' trend
+# this can be done by predicting all the observations for the same month, in
+#   this case we use June
+pred3b <- predict(model3,type="response",transform(datanew,month=6))
+
+#this can then be added to the plot as a dashed line
+lines(1:720/10,pred3b,col=2,lty=2)
+
+```
+
+---
+
+class: inverse, middle, center
+
+# Thank you!
+
+## What should I cover next?
+
+#### João Vítor Perez de Souza
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
