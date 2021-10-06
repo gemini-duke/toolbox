@@ -1,0 +1,13 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.Rdata
+.httr-oauth
+.DS_Store
+
+# Ignore the figure folder
+interrupted_time_series_presentation_files
+
+# ignore the sample dataset
+/sicily.csv
