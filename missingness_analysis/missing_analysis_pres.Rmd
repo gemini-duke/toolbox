@@ -1,0 +1,25 @@
+---
+title: "Interrupted time-series analysis"
+
+author: "@souzajvp"
+institute: "GEMINI data science meeting"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    css: css/custom-en.css
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      ratio: 16:9
+      countIncrementalSlides: false
+---
+
+class: inverse, middle, center
+
+# Imputation with `mice`
+
+.footnote[
+See [Codes](), [Video-TBA]() and [SOP-??]() for materials of the previous pres.
+]
+
+---
