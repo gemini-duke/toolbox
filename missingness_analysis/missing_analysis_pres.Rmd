@@ -1,5 +1,5 @@
 ---
-title: "Interrupted time-series analysis"
+title: "Handling missingness in data"
 
 author: "@souzajvp"
 institute: "GEMINI data science meeting"
@@ -19,7 +19,147 @@ class: inverse, middle, center
 # Imputation with `mice`
 
 .footnote[
-See [Codes](), [Video-TBA]() and [SOP-??]() for materials of the previous pres.
+See [Codes](https://github.com/gemini-duke/toolbox/tree/main/missingness_analysis), [Video-TBA]() and [SOP-TBD]() and [miceVignettes](https://www.gerkovink.com/miceVignettes/) for materials on this section
 ]
 
 ---
+
+## The `mice` package  
+
+Designed for flexible imputation of incomplete data. 
+
+--
+
+### Working with mice
+
+1. Load packages
+```{r, warning=FALSE}
+require(mice); require(lattice); require(gtsummary)
+set.seed(123)
+```
+
+Sample data set
+```{r, echo=FALSE}
+knitr::kable(head(nhanes), format = 'html')
+```
+
+---
+
+### Inspect the missing data pattern
+
+Missing data matrix
+```{r, fig.align="center", fig.height=6}
+md_pattern <- md.pattern(nhanes)
+```
+
+---
+
+class: inverse, middle, center
+
+## Ad Hoc imputation methods
+
+---
+
+### Imputing with the mean
+
+```{r, message=FALSE, warning=FALSE}
+imp <- mice(nhanes, method='mean', m=1, maxit=1, print=FALSE)
+```
+
+```{r, echo=FALSE}
+knitr::kable(head(complete(imp)), format = 'html')
+```
+
+---
+
+### Imputing with the mean
+
+```{r, echo=FALSE}
+og.model <- lm(age~bmi, data=nhanes) %>% tbl_regression()
+imp.model <- lm(age~bmi, data=complete(imp)) %>% tbl_regression()
+
+merged.model <- tbl_merge(list(og.model, imp.model), tab_spanner = c("Og. data", "Mean-imputed")) 
+merged.model %>% as_gt() %>% gt::tab_header(gt::md("**Age~BMI model**"))
+```
+
+No actual difference, as bmi follows a *normal-like* distribution
+
+---
+
+### Regression imputation
+
+```{r,echo=TRUE}
+imp <- mice(nhanes, method="norm.predict", m=1, maxit=1, print=FALSE)
+```
+
+```{r, echo=FALSE}
+knitr::kable(head(complete(imp)), format = 'html')
+```
+
+---
+
+### Regression imputation.
+
+
+```{r, echo=FALSE}
+imp.model <- lm(age~bmi, data=complete(imp)) %>% tbl_regression() %>% bold_p()
+
+merged.model <- tbl_merge(list(og.model, imp.model), tab_spanner = c("Og. data", "Regression-imputed")) 
+merged.model  %>%  as_gt() %>% gt::tab_header(gt::md("**Age~BMI model**"))
+```
+
+---
+
+### Multiple imputation
+
+The standard mice algorithm runs for 5 iterations and generates 5 imputations each.
+```{r}
+imp <- mice(nhanes, print=FALSE)
+```
+
+Checking the attributes of the `imp` object, we can access many different aspects of the process.
+```{r}
+attributes(imp)
+```
+
+
+
+---
+
+### Multiple imputation
+
+The original data is store as `imp$data` and the imputations with `imp$imp`;
+
+We can return the imputed data set either in long or broad formats:
+```{r}
+c.long <- complete(imp, "long")
+knitr::kable(head(c.long), format = 'html')
+```
+
+---
+
+### Predictor matrix
+
+`mice` allows you to explicitily determine which variables are going to be used for imputing others;
+
+--
+
+This is done through the predictor matrix
+```{r}
+pred <- imp$pred
+knitr::kable(pred, format = 'html')
+```
+
+---
+
+Let's say you want to remove `hyp` from the set of predictors, but want it to be predicted by other variables
+```{r}
+pred[, "hyp"] <- 0
+pred
+```
+
+Now you can use your new matrix in the imputation process
+```{r}
+imp <- mice(nhanes, pred=pred, prinf=FALSE)
+```
+
