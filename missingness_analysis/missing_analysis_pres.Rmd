@@ -12,6 +12,23 @@ output:
       highlightLines: true
       ratio: 16:9
       countIncrementalSlides: false
+
+---
+<style>
+
+.center2 {
+  margin: 0;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  -ms-transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%);
+}
+
+</style>
+
+Mice stands for - Multiple imputation by chained equations
+
 ---
 
 class: inverse, middle, center
@@ -30,17 +47,14 @@ Designed for flexible imputation of incomplete data.
 
 --
 
-### Working with mice
-
-1. Load packages
-```{r, warning=FALSE}
-require(mice); require(lattice); require(gtsummary)
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+library(mice); library(lattice); library(gtsummary); library(dplyr)
 set.seed(123)
 ```
 
 Sample data set
-```{r, echo=FALSE}
-knitr::kable(head(nhanes), format = 'html')
+```{r, echo=FALSE, fig.alig="left"}
+knitr::kable(head(nhanes), format = 'html',align='l')
 ```
 
 ---
@@ -48,8 +62,11 @@ knitr::kable(head(nhanes), format = 'html')
 ### Inspect the missing data pattern
 
 Missing data matrix
-```{r, fig.align="center", fig.height=6}
-md_pattern <- md.pattern(nhanes)
+```{r, fig.align="center", fig.height=6, echo=FALSE, message=FALSE}
+miss <- VIM::aggr(nhanes, numbers=T, sortVars=TRUE,
+                  labels=names(nhanes), cex.axis=.7,
+                  gap=3, ylab=c("Missing data","Pattern"), prop = c(TRUE, FALSE))
+
 ```
 
 ---
@@ -74,15 +91,24 @@ knitr::kable(head(complete(imp)), format = 'html')
 
 ### Imputing with the mean
 
-```{r, echo=FALSE}
+Checking the model
+
+--
+
+
+No actual difference, as bmi follows a *normal-like* distribution
+
+
+```{r, echo=FALSE, fig.align="bottom"}
 og.model <- lm(age~bmi, data=nhanes) %>% tbl_regression()
 imp.model <- lm(age~bmi, data=complete(imp)) %>% tbl_regression()
 
 merged.model <- tbl_merge(list(og.model, imp.model), tab_spanner = c("Og. data", "Mean-imputed")) 
 merged.model %>% as_gt() %>% gt::tab_header(gt::md("**Age~BMI model**"))
+
 ```
 
-No actual difference, as bmi follows a *normal-like* distribution
+
 
 ---
 
@@ -100,7 +126,7 @@ knitr::kable(head(complete(imp)), format = 'html')
 
 ### Regression imputation.
 
-
+Now we see some difference, which actually makes p < 0.05
 ```{r, echo=FALSE}
 imp.model <- lm(age~bmi, data=complete(imp)) %>% tbl_regression() %>% bold_p()
 
@@ -111,6 +137,8 @@ merged.model  %>%  as_gt() %>% gt::tab_header(gt::md("**Age~BMI model**"))
 ---
 
 ### Multiple imputation
+
+--
 
 The standard mice algorithm runs for 5 iterations and generates 5 imputations each.
 ```{r}
@@ -133,12 +161,15 @@ The original data is store as `imp$data` and the imputations with `imp$imp`;
 We can return the imputed data set either in long or broad formats:
 ```{r}
 c.long <- complete(imp, "long")
-knitr::kable(head(c.long), format = 'html')
+```
+
+```{r, echo=FALSE}
+knitr::kable(sample_n(c.long, 5), format = 'html')
 ```
 
 ---
 
-### Predictor matrix
+### Which variables should be used for imputation?
 
 `mice` allows you to explicitily determine which variables are going to be used for imputing others;
 
@@ -147,19 +178,89 @@ knitr::kable(head(c.long), format = 'html')
 This is done through the predictor matrix
 ```{r}
 pred <- imp$pred
+```
+
+```{r, echo=FALSE}
 knitr::kable(pred, format = 'html')
 ```
 
 ---
 
+### Which variables should be used for imputation?
+
 Let's say you want to remove `hyp` from the set of predictors, but want it to be predicted by other variables
 ```{r}
 pred[, "hyp"] <- 0
-pred
 ```
+
+```{r, echo=FALSE}
+knitr::kable(pred, format = 'html')
+```
+
 
 Now you can use your new matrix in the imputation process
 ```{r}
-imp <- mice(nhanes, pred=pred, prinf=FALSE)
+imp <- mice(nhanes, pred=pred, print=FALSE)
 ```
 
+---
+
+### Using cutoffs for selecting predictors
+
+Let's say you want to  select variables that have at least 0.3 pearson correlation as predictors
+
+```{r}
+ini <- mice(nhanes, pred=quickpred(nhanes, mincor=.3), print=F)
+```
+
+```{r, echo=FALSE}
+knitr::kable(pred, format = 'html')
+```
+
+--
+
+For large matrices, you can export the data to excel and edit by hand.
+
+---
+
+## Method of imputation
+
+The standard method used in mice is *predictive mean matching*
+```{r}
+imp$method
+```
+
+--
+
+In reality there are many more options
+
+---
+
+## Methods
+
+```{r}
+methods(mice)
+```
+
+---
+
+```{r, echo=FALSE}
+ini <- mice(nhanes2, print=F, maxit=0)
+meth <- ini$meth
+```
+
+### Changing the methods of imputation
+
+```{r}
+meth["bmi"] <- "norm"
+```
+
+```{r, echo=FALSE}
+imp <- mice(nhanes2, meth=meth, print=F)
+```
+
+```{r,echo=FALSE}
+plot(imp)
+```
+
+## 
