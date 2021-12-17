@@ -1,0 +1,53 @@
+---
+title: "Interrupted time series - TB"
+author: "João V."
+output:
+  html_notebook: 
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+    theme: cerulean
+    highlight: tango
+---
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
+library(astsa)
+library(forecast)
+library(dplyr)
+library(zoo)
+library(comprehenr)
+library(ggplot2)
+library(scales)
+library(gtsummary)
+library(foreign) ; library(tsModel) ; library("lmtest") ; library("Epi")
+library("splines") ; library("vcd")
+library(ggplot2); library(dplyr); library(gtsummary)
+```
+
+
+
+```{r}
+setwd("/media/newhd/joao-souza/projects/GEMINI/tb_projects/interrupted_time_series")
+novos <- read.csv("casos_novos_ibge_taxa_map.csv", na.strings = c("", NA))
+```
+
+
+```{r}
+novos <-rename(novos, CASOS=qt_obs, POPULACAO=value, TAXA=taxa)
+head(novos)
+```
+
+```{r}
+
+
+%>% select(aces,rate,smokban) %>% 
+  mutate(smokban=(car::recode(smokban, "0='Before';1='After'"))) %>% 
+  tbl_summary(by=smokban, statistic=stat, type=types, label=var_names) %>% add_p() %>% bold_labels() %>% bold_p() %>% as_gt() %>% gt::tab_header(gt::md("**ACE events before and after the smoke ban**"))
+```
+
+
+```{r}
+rep(seq(1,12),6) 
+```
+
+
+
