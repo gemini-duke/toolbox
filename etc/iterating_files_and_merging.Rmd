@@ -1,0 +1,100 @@
+---
+title: "Iterating through files and merging"
+output: html_notebook
+---
+
+Load packages
+```{r, setup, include=FALSE}
+library(data.table); library(openxlsx); library(readxl); library(tidyverse)
+
+# Example when working in Windows 
+# setwd("E:\\Trabalhos eventuais\\Tuberculose Ministério\\base de dados")
+
+# linux/MacOS systems
+setwd("/media/newhd/joao-souza/projects/GEMINI/tb_projects/space_time_cube/tables_arcgis")
+
+
+# Since this is a R notebook, you need to set a global option with knitr
+knitr::opts_knit$set(root.dir = "/media/newhd/joao-souza/projects/GEMINI/tb_projects/space_time_cube/tables_arcgis")
+```
+
+In this notebok, I show an example of how to iterate through files and do steps of merging. To do so, we can use data from the GEMINI github page.
+
+The cunk bellow downloads and creates a data.frame containing relevant state and municipality information from Brazil.
+```{r}
+
+municipio <- read.xlsx("https://github.com/gemini-duke/toolbox/blob/main/GIS/databases/brazil_municipalities.xlsx?raw=true")
+municipio$Municipio <- as.character(municipio$Municipio)
+municipio$Região.geografica <- as.character(municipio$Região.geografica)
+municipio$UF <- as.character(municipio$UF)
+municipio$nomes <- municipio$Municipio
+municipio$UF <- trimws(municipio$UF)
+
+estados_regioes <- read.xlsx("https://github.com/gemini-duke/toolbox/blob/main/GIS/databases/brazil_states_regions.xlsx?raw=true")
+estados_regioes$Estados <- as.character(estados_regioes$Estados)
+estados_regioes$estado_abre <- as.character(estados_regioes$estado_abre)
+estados_regioes$Regiões <- as.character(estados_regioes$Regiões)
+
+
+
+municipio <- merge(municipio, estados_regioes, by.x= "UF", by.y = "estado_abre" , all.x = TRUE)
+municipio$IBGE <- NULL
+municipio$Região.geografica <- NULL
+municipio$nomes <- NULL
+
+head(municipio)
+```
+
+Now that we have our "municipality" (`municipio` object) data, let's set our working directory to search for data files.
+
+## Set the pattern of file names to be loaded
+```{r}
+# you can use any sort of pattern. When you have many files with the same extension, it might be better to set a pattern to the beginning/ending of them such as "data_....xls"
+
+# The code below creates a list of file names that correspond to the desired pattern.
+file_list <- sort(list.files(pattern=".xls"))
+file_list
+```
+
+## Iterate through files
+```{r}
+# Generate empty dataframe
+tables <- data.frame()
+
+# loop through files
+for (i in 1:length(file_list)){
+  
+  message("Working on item ", i, " of a total of ", length(file_list), " items")
+  
+  #function to read files. 
+  # The idea here is to use temp_file as a temporary file. You are only interested in the final merged version.
+  
+  #If working with .csv you can use fread(). 
+  # if working with xlsx, use read.xlsx() from the openxlsx package
+  # if working with xls, use the following:
+  temp_file <- read_excel(file_list[i])
+
+  #add file_name as a marker column. This is important so you know where the data comes from
+  temp_file$source <- c(substr(file_list[i], 1, nchar(file_list[i]) - 4))
+
+  # perform the merging with the desired columns. In this example, both data sources have the same colum name "IBG6". By doing so you aggregate information from both files over the same identifier variable.
+  temp_file <- merge(temp_file, municipio, by.x = "IBGE6", by.y="IBGE6", all.x = TRUE)
+  
+  #select columns that need to be kept. In this sense you discard useless variables 
+  cols_fica <- c("IBGE6","Municipio","código_uf","Estados","source", "PATTERN")
+  
+  #Filter columns to keep only those specified before
+  temp_file <- subset(temp_file, select = cols_fica)
+  
+  # append the temporary data set so you can keep information after iterations
+  tables <- rbind(tables, temp_file)
+
+}
+
+# This step is optional. I decided to keep information in a wide format, thus with a lower ammount of lines.
+tables <- tables %>% pivot_wider(names_from=source, values_from=PATTERN)
+
+# Write the final file to the desired folder.
+fwrite(tables, file= "/media/newhd/joao-souza/projects/GEMINI/tb_projects/space_time_cube/tables_arcgis/arcgis_summary_tb.csv", sep=";", showProgress = TRUE)
+```
+
