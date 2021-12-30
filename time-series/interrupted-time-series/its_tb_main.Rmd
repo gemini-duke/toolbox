@@ -36,18 +36,62 @@ novos <-rename(novos, CASOS=qt_obs, POPULACAO=value, TAXA=taxa)
 head(novos)
 ```
 
+
 ```{r}
+novos_state <- novos %>% group_by(UF, NU_ANO) %>% summarize(CASOS=sum(CASOS), POPULACAO=sum(POPULACAO))
 
+# Drop 2021
+novos_state <- novos_state %>% filter(NU_ANO != 2021)
+novos_state$PANDEMIC <- if_else(novos_state$NU_ANO %in% c(2020,2021), 1, 0)
 
-%>% select(aces,rate,smokban) %>% 
-  mutate(smokban=(car::recode(smokban, "0='Before';1='After'"))) %>% 
-  tbl_summary(by=smokban, statistic=stat, type=types, label=var_names) %>% add_p() %>% bold_labels() %>% bold_p() %>% as_gt() %>% gt::tab_header(gt::md("**ACE events before and after the smoke ban**"))
+saopaulo <- novos_state %>% filter(UF=="SP")
+saopaulo$TIME <- seq(1:nrow(saopaulo))
+
+novos_state
+# adm %>% mutate(date=format(DT_INTER_C, "%Y-%m")) %>% 
+  # group_by(date) %>% summarise(total = sum(casos))
+# cases.ts <- ts(as.numeric(cases$total), frequency=12, start=c(2007,12))
+```
+
+```{r}
+ggplot(saopaulo, aes(x=NU_ANO, y=CASOS)) + 
+  geom_point() + labs(x="Year of notification", y="New TB cases",
+                      title="New TB cases registred in SP state")
+```
+
+```{r}
+model.sp <- glm(CASOS ~ PANDEMIC + TIME, family=poisson, saopaulo)
+
+model.sp %>% tbl_regression(label=list(PANDEMIC~"Pandemic", TIME~"Time")) %>% 
+  bold_p() %>% 
+  bold_labels()
+```
+```{r}
+datanew <- data.frame(PANDEMIC=rep(c(0,1),c(19,1)),
+                      TIME= c(1:nrow(saopaulo)), YEAR=rep(2001:2020))
+# We generate predicted values based on the model in order to create a plot
+pred1 <- predict(model.sp,type="response",datanew)
+
+ggplot(saopaulo, aes(x=NU_ANO, y=CASOS)) + 
+  geom_point() + labs(x="Year of notification", y="New TB cases",
+                      title="New TB cases registred in SP state")
+
+ggplot(saopaulo, aes(x=NU_ANO, y=CASOS)) + 
+  geom_line() + labs(x="Year of notification", y="New TB cases",
+                      title="New TB cases registred in SP state")
 ```
 
 
 ```{r}
-rep(seq(1,12),6) 
+
+
+# %>% select(aces,rate,smokban) %>% 
+#   mutate(smokban=(car::recode(smokban, "0='Before';1='After'"))) %>% 
+#   tbl_summary(by=smokban, statistic=stat, type=types, label=var_names) %>% add_p() %>% bold_labels() %>% bold_p() %>% as_gt() %>% gt::tab_header(gt::md("**ACE events before and after the smoke ban**"))
 ```
+
+
+
 
 
 
