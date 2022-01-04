@@ -18,9 +18,9 @@ setwd("/media/newhd/joao-souza/projects/GEMINI/tb_projects/space_time_cube/table
 knitr::opts_knit$set(root.dir = "/media/newhd/joao-souza/projects/GEMINI/tb_projects/space_time_cube/tables_arcgis")
 ```
 
-In this notebok, I show an example of how to iterate through files and do steps of merging. To do so, we can use data from the GEMINI github page.
+In this notebook, I show an example of how to iterate through files and do steps of merging. To do so, we can use data from the GEMINI github page.
 
-The cunk bellow downloads and creates a data.frame containing relevant state and municipality information from Brazil.
+The chunk bellow downloads and creates a data.frame containing relevant state and municipality information from Brazil.
 ```{r}
 
 municipio <- read.xlsx("https://github.com/gemini-duke/toolbox/blob/main/GIS/databases/brazil_municipalities.xlsx?raw=true")
@@ -81,7 +81,7 @@ for (i in 1:length(file_list)){
   temp_file <- merge(temp_file, municipio, by.x = "IBGE6", by.y="IBGE6", all.x = TRUE)
   
   #select columns that need to be kept. In this sense you discard useless variables 
-  cols_fica <- c("IBGE6","Municipio","código_uf","Estados","source", "PATTERN")
+  cols_fica <- c("IBGE6","Municipio","código_uf","Estados", "Regiões","source", "PATTERN")
   
   #Filter columns to keep only those specified before
   temp_file <- subset(temp_file, select = cols_fica)
@@ -91,7 +91,7 @@ for (i in 1:length(file_list)){
 
 }
 
-# This step is optional. I decided to keep information in a wide format, thus with a lower ammount of lines.
+# This step is optional. I decided to keep information in a wide format, thus with a lower amount of lines.
 tables <- tables %>% pivot_wider(names_from=source, values_from=PATTERN)
 
 # Write the final file to the desired folder.
