@@ -1,0 +1,72 @@
+---
+title: "Cox regression and survival analysis"
+
+author: "@souzajvp"
+institute: "GEMINI data science meeting"
+output:
+  xaringan::moon_reader:
+    seal: false
+    lib_dir: libs
+    css: css/custom-en.css
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      ratio: 16:9
+      countIncrementalSlides: false
+---
+
+background-image: url("./fig/SURVIVAL.svg")
+background-position: center
+background-size: contain, 50% 50%, cover
+
+---
+
+## Time-to-event analysis
+
+--
+
+Type of analysis that measures the time that an event takes to happen;
+
+--
+
+Will measure the likelihood of an event, starting from exposure:
+- From hospital **admission** to **discharge** - hip fracture;
+- From cancer **diagnosis** to **death** - treatment X;
+- From hospital **discharge** to **readmission** - life style;
+
+---
+## Hazard ratio
+
+$$HR = Hazard \ in \ treatment arm / Hazard \ in \ control \ arm$$
+--
+
+Hazard: rate of an instantaneous event or the probability that an individual at time *t* has an event at that time;
+
+e.g. you have a 1% chance to die from a condition in each day.
+
+---
+
+## Censoring
+
+---
+
+## Relative hazard versus relative risk
+
+Common to see phrases *"drug X reduces the risk of dying by 40%"* based on an observed survival HR of 0.60;
+
+1 minus the HR **should not be interpreted as a risk reduction**;
+
+---
+
+
+
+---
+
+
+## References
+
+- [On the Interpretation of the Hazard Ratio and Communication of Survival Benefit](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5388384/);
+
+- [Interpreting hazard ratios](https://www.bmj.com/content/351/bmj.h4631.full)
+
+- [Survival Analysis Playlist - Zedstatistics](https://www.youtube.com/watch?v=v1QqpG0rR1k&list=PLTNMv857s9WUclZLm6OFUW3QcXgRa97jx&ab_channel=zedstatistics)
