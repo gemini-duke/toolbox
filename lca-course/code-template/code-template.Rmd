@@ -1,0 +1,315 @@
+---
+title: "Latent Class Analysis - Code template"
+output: html_document
+---
+
+> This document is a walk-through to perform Latent Class Analysis (LCA) in R.
+
+If you just want the codes, please check the `code.R` script.
+
+# Install and load packages
+
+Some packages are necessary to run the analysis. Make sure they are installed and load before running the codes.
+
+```{r}
+if (!require(tidyverse)) {install.packages("tidyverse")}; library(tidyverse)
+if (!require(correlation)) {install.packages("correlation")}; library(correlation)
+if (!require(gtsummary)) {install.packages("gtsummary")}; library(gtsummary)
+if (!require(huxtable)) {install.packages("huxtable")}; library(huxtable)
+if (!require(poLCA)) {install.packages("poLCA")}; library(poLCA)
+```
+
+
+# Load supplementary functions
+
+I created some functions to facilitate the process of performing the LCA. Load it with the `source` function.
+
+The fucntions are:
+
+- `tbl_lca`: computes the fit indices in a publication-ready table.
+
+- `elbow_plot`: creates an elbow plot for fit indices.
+
+- `tbl_avepp`: creates the AvePP matrix.
+
+- `profile_plot`: creates the profile plot.
+
+```{r}
+source(file = "lca-functions.R")
+```
+
+
+# Load the data
+
+```{r}
+dataset <- read.table("dataset_pd.txt", header = TRUE)[-9]
+```
+
+
+# Inspect the data
+
+Here, you are free to inspect and tidy your data set. Check the column names, the data structure, the number of columns and rows, and so on. Also, make your edits in the data and prepare it for the LCA.
+
+```{r}
+head(dataset)
+glimpse(dataset)
+summary(dataset)
+sum(is.na(dataset))
+```
+
+In the LCA, the variables can be either numeric or factor. If factor, they will be transformed to numeric. 
+
+One thing that you have to pay attention to is the "category of success". For example, if you have a variable with options *yes* or *no* and you consider the "success" to be *yes*, make sure that the *yes* is the highest value in the variable. For example:
+
+Yes = 1
+
+No = 0
+
+You can keep all the variables in your data set, those that will be LCA indicators and those that won't. 
+
+
+# Exploratory Data Analysis (EDA)
+
+Remember of running Exploratory Data Analysis and check for missingness. The package `poLCA` doesn't have tools to handle missing data. They will be removed.
+
+Here are an example, but you should go deeper.
+
+## Bar plot
+
+```{r}
+freq <- apply(X = dataset, MARGIN = 2, FUN = table)
+barplot(freq, beside = TRUE, legend = c("No", "Yes"), 
+        main = "Participation in PD activities")
+```
+
+
+# Correlation analysis
+
+To verify the relationship between the indicators, you can estimate correlation coefficients. Be sure of the type of your indicators to perform the right correlation.
+
+You can learn more about it in the [website of the package correlation](https://easystats.github.io/correlation/).
+
+To perform correlations, we can use the package `correlation` that has several types of correlation and nice visualization tools.
+
+
+```{r}
+corr <- correlation(dataset, method = "tetrachoric", include_factors = TRUE) %>%
+  summary(redundant = FALSE) %>% visualisation_recipe(show_data = "tile")
+plot(corr) + theme_minimal() + theme(panel.grid = element_blank())
+```
+
+
+Check the coefficients to see if they are meaningful. Remember: *"It makes only sense to apply LPA/LCA if the set of indicators is inter-correlated ([Bauer, 2021.](https://psyarxiv.com/97uab/))"*
+
+
+# Model specification
+
+Now, you can build your model. Just change the variable names inside the `cbind` function,.
+
+
+
+```{r}
+my_formula <- cbind(CK, PCK, TLM, THS, CMD, ILS, CSP, KKY) ~ 1
+```
+
+
+# Model estimation (class enumeration)
+
+The code below is a loop to estimate the k-classes models all at once (time-saving). The one thing you need to change is the number of models you want to compute (`n_models`).
+
+It's recommended to run 5~8 models and investigate their fit indices.
+
+
+```{r}
+set.seed(42)
+n_models <- 6 # change this number
+lca <- list()
+for (i in seq_len(n_models)) {
+  lca[[i]] <- poLCA::poLCA(formula = my_formula,
+                         data = dataset,
+                         nclass = i,
+                         maxiter = 5000,
+                         nrep = 100)
+}
+```
+
+
+Save the models after they have finished. If you close R you can recover your results. Put the file path of your choice.
+
+```{r}
+save(lca, file = "lca.RData") 
+```
+
+
+
+# Statistical criteria
+
+Explore the fit indices of the models. For this, use the supplementary function `tbl_lca()` from the `lca-functions.R` script (you already loaded it) to create a publication-ready table.
+
+`tbl_lca()`: this function has one argument, `lca_models`. It receives a list of poLCA models.
+
+The object `lca` that you created in the step "model estimation" is a list of poLCA models.
+
+The output of the `tbl_lca` is a `huxtable` object. It can be save in several formats (e.g., docx, html, latex, pdf, PowerPoint, etc). You can learn more in the [huxtable package website](https://hughjonesd.github.io/huxtable/).
+
+```{r}
+fit_table <- tbl_lca(lca_models = lca)
+fit_table
+```
+
+If you want/need to perform all the fit indices one by one:
+
+```{r}
+# sample size
+n <- lca[[1]]$Nobs
+
+# Smallest class size (%)
+small_class <- map_chr(lca, function(x) gtsummary::style_percent(min(x$P), digits = 1))
+# Log likelihood
+llik <- map_dbl(lca, function(x) x$llik)
+
+# BIC
+bic <- map_dbl(lca, function(x) x$bic)
+
+# AIC
+aic <- map_dbl(lca, function(x) x$aic)
+
+# CAIC and SABIC
+npar <- map_dbl(lca, function(x) x$npar)
+caic <- (-2 * llik) + npar * (log(n) + 1)
+sabic <- (-2 * llik) + npar * log((n + 2) / 24)
+
+# Approximate Weight of Evidence
+awe <- (-2 * llik) + npar * (log(n) + 1.5)
+
+# Bayes Factor
+bf <- c()
+for (i in 1:length(lca)) {
+  if (i + 1 <= length(lca)) {
+    a <- -0.05 * bic[i]
+    b <- -0.05 * bic[i + 1]
+    bf[i] <- gtsummary::style_sigfig(exp(a - b), digits = 3)
+  } else {bf[i] <- NA}
+}
+
+
+# Entropy
+entropy <- function(x) {
+  numerator <- -sum(x$posterior * log(x$posterior), na.rm = TRUE)
+  denominator <- x$N * log(ncol(x$posterior))
+  1 - (numerator / denominator)
+}
+ent <- map_dbl(lca, entropy)
+```
+
+
+
+# Elbow plot
+
+The elbow plot can be used for visually inspect the fit indices: BIC, SABIC, AIC, CAIC, and AWE.
+
+You can use the supplementary function `elbow_plot()` to create the plot. This function was built on `ggplot2`.
+
+`elbow_plot()`: this function has one argument, `lca_models`. It receives a list of poLCA models.
+
+```{r}
+elbow_plot(lca_models = lca)
+```
+
+
+# Average latent class posterior probability (AvePP)
+
+To create the AvePP matrix, you can use the supplementary function `tbl_avepp`.
+
+`tbl_avepp`: this function has one argument, `lca_model`. Now, you should insert just one model, not the list with all the estimated models.
+
+The output of the `tbl_avepp` is a `huxtable` object (similar to `tbl_lca`).
+
+Let's say your best model is the 5-class solution. To select this model:
+
+```{r}
+my_model <- lca[[5]] # 5 represents the 5-class solution
+```
+
+To compute the matrix:
+
+```{r}
+avepp <- tbl_avepp(lca_model = my_model)
+```
+
+
+
+# Inspect indicators probabilities 
+
+A very useful way to understand the results of LCA is looking at the probabilities of each class for each category of the variables.
+
+
+This information is stored in the list `probs`, inside the poLCA object.
+
+To recover this list:
+
+```{r}
+my_model$probs
+```
+
+
+You can see that, according to the class, there are probabilities of endorsing a category.
+
+It can be used for creating the profile plot and to give names to classes.
+
+
+
+# Profile plot (item probability plot)
+
+To create the profile plot for a model, you can use the supplementary function `profile_plot`. This function was built on the package `ggplot2`.
+
+Note: this function will only work for binary indicators and polytomous indicators that have exactly the same categories.
+
+Arguments:
+
+- `lca_model`: the poLCA object you want to use to create the plot.
+
+- `var_names`: beautiful names for the indicators (optional).
+
+- `class_names`: names for each class (optional).
+
+- `category_names`: used only for polytomous indicators. Categories have to be the same (optional).
+
+- `binary`: Are the indicators binary? Default is `TRUE`.
+
+
+
+```{r}
+variables_names <- c("Cont. Know.", 
+                     "P. Cont. Know.",
+                     "Teach./Learn. M.",
+                     "Teach. Het. Stud.",
+                     "Class. M. and D",
+                     "Ind. Learn. S.",
+                     "C. Stud/Par",
+                     "Know. K and Y")
+class_names <- c("High on general pedagogical topics",
+                 "High on teaching methods",
+                 "High on all activities",
+                 "Low on all activities",
+                 "High on CK and TM")
+
+
+profile_plot(lca_model = my_model,
+             var_names = variables_names,
+             class_names = class_names,
+             binary = TRUE)
+```
+
+
+
+# Creating a column with estimated classes
+
+poLCA creates an object called `predclass` that has the modal assignment classes.
+
+You can use this object to create a new column in your data set representing the classes estimated in LCA.
+
+```{r}
+dataset$lca_classes <- my_model$predclass
+```
+
