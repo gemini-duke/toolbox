@@ -1,0 +1,197 @@
+---
+title: "Template Cox proportional hazards model"
+output: html_notebook
+author: "João Vítor Souza"
+---
+
+Packages required
+```{r}
+# Essential packages 
+library(survival); library(survminer)
+# Useful packages
+library(gtsummary); library(ggplot2); library(dplyr)
+```
+
+## Sample data set
+
+The lung dataset is available from the `survival` package in R. The data contain subjects with advanced lung cancer from the North Central Cancer Treatment Group (NCCTG). 
+
+Variables of interest:
+
+* time: Survival time in days;
+* status: censoring status 1=censored, 2=dead;
+* sex: Male=1 Female=2;
+
+```{r}
+data(lung)
+head(lung)
+```
+## Check the distribution of time of survival
+
+Here we will also check for the differences between patients that were censored or not
+```{r, message=FALSE, echo=FALSE, warnig=FALSE}
+lung %>% mutate(Status=factor(status, levels=c(1,2), labels=c("Censored", "Dead"))) %>%
+  ggplot(aes(x = time, fill = Status)) + 
+  geom_histogram(bins = 25, alpha = 0.6, position = "identity") + 
+  labs(x = "Days survived", y = "N. of patients")
+```
+
+## What if you need to calculate the time?
+
+It is common for us to only have dates that events occurred. In this sense, we can work with the date/time format to get the difference of time between these events.
+
+Examples:
+* Date and time of death - Date and time of beginning of treatment;
+* Date and time of discharge - Date and time of admission;
+
+### Example 1: Dates
+
+Here I will create a small example of dates of arrival (`date_arred`) and discharge (`dc_date`) from hospital.
+```{r}
+date_ex <- 
+  tibble(date_arred = c("2007-02-20", "2004-08-13", "2010-10-27"), 
+         dc_date = c("2007-04-15", "2004-08-18", "2010-10-28"))
+date_ex
+```
+
+We can transform dates into `POSIXct` format with the as.POSIXct function.
+
+Here we can specify the format (e.g. YYYY-mm-dd) of the date/time variables as well as the separators used. 
+
+[List of available formats - bottom of the page](https://stat.ethz.ch/R-manual/R-devel/library/base/html/strptime.html)
+
+```{r}
+# Transforming variables to date/time format
+arrival <- as.POSIXct(date_ex$date_arred, format="%Y-%m-%d")
+discharge <- as.POSIXct(date_ex$dc_date, format="%Y-%m-%d")
+
+# Calculating the difference of time between arrival and discharge
+date_ex$delta_arr_dc <- as.numeric(difftime(discharge, arrival, units = "days"))
+
+date_ex
+```
+
+### Example 2: Dates and times
+
+Now, let's assume you have both date and time of arrival and discharge and want to consider time as well.
+
+```{r}
+date_ex2 <- 
+  tibble(date_arred = c("2007-02-20", "2004-08-13", "2010-10-27"),
+         time_arred = c("20:20", "18:00", "12:15"),
+         dc_date = c("2007-04-15", "2004-08-18", "2010-10-28"),
+         dc_time = c("19:11", "10:10", "09:00"))
+date_ex2
+```
+
+Now we need to:
+1. Paste date and time together;
+2. Transform it to POSIXct considering the new format;
+3. Calculate the differences;
+
+```{r}
+# Here I paste the date and time of arrival into a single thing
+arrival_date_time <- paste(date_ex2$date_arred, date_ex2$time_arred, sep="-")
+arrival_date_time
+# Now I transform it to date/time, considering the format needed
+arrival_date_time <- as.POSIXct(arrival_date_time, 
+                                format="%Y-%m-%d-%H:%M")
+# Now we do the same for discharge
+discharge_date_time <- paste(date_ex2$dc_date, date_ex2$dc_time, sep="-")
+discharge_date_time
+
+discharge_date_time <- as.POSIXct(discharge_date_time, 
+                                format="%Y-%m-%d-%H:%M")
+
+# Calculating the difference of time between arrival and discharge
+date_ex2$delta_arr_dc <- as.numeric(difftime(discharge_date_time,
+                                            arrival_date_time, 
+                                            units = "days"))
+# Now we have the amount of days between arrival and discharge, considering the time as well
+date_ex2
+```
+
+## Kaplan-Meier method
+
+```{r}
+f1 <- survfit(Surv(time, status) ~ 1, data = lung)
+f1
+```
+
+```{r}
+surv.f1 <- ggsurvplot(
+  fit = f1, 
+  xlab = "Days", 
+  ylab = "Overall survival probability")
+
+plot.new() 
+print(surv.f1,newpage = FALSE)
+```
+
+## Comparing survival times between groups
+
+
+```{r}
+lung$sex1 <- factor(lung$sex, levels=c(1,2), labels=c("Male", "Female"))
+
+
+fit <- survfit(Surv(time, status) ~ sex1 , data = lung)
+
+surv.sex <- ggsurvplot(fit=fit, data = lung, 
+                       linetype="strata", surv.median.line = "hv",
+                       conf.int = TRUE, pval=TRUE)
+
+plot.new() 
+print(surv.sex,newpage = FALSE)
+```
+### Cox proportional hazards model
+
+Testing the effect of a single variable
+```{r}
+res.cox <- coxph(Surv(time, status) ~ sex1 , data = lung)
+res.cox %>% tbl_regression(exp = TRUE) %>% bold_p()
+```
+
+
+### Testing multiple variables at once
+```{r}
+# Changing variable to factor
+lung$ph.ecog1 <- factor(lung$ph.ecog)
+# Include the variables you want to test with the time to event
+covariates <-  c("sex", "age", "ph.karno", "ph.ecog1")
+# Use this list to include nice labels for the final table
+var_names <- list(sex~"Sex",
+                  age~"Age",
+                  ph.karno~"PH Karno",
+                  ph.ecog1~"PH Ecog")
+
+tbl_univ <-
+  tbl_uvregression(
+    lung[,c(covariates, "time", "status")],
+    label=var_names,
+    method = coxph,
+    y = Surv(time, status),
+    exponentiate = TRUE) %>% 
+  bold_p() %>% bold_labels() 
+tbl_univ
+```
+### Multi-variate Cox proportonional hazards model
+```{r}
+var_names <- list(sex~"Sex",
+                  age~"Age",
+                  ph.karno~"PH Karno",
+                  ph.ecog1~"PH Ecog")
+
+tbl_multiv <- coxph(Surv(time, status) ~ sex + age + ph.karno + ph.ecog1, data = lung) %>% 
+  tbl_regression(label=var_names, exponentiate=TRUE) %>% bold_p() %>% bold_labels
+tbl_multiv
+
+```
+Combining tables
+```{r}
+tbl_merge(tbls=list(tbl_univ, tbl_multiv),
+          tab_spanner=c("Univariate", "Multivariate"))
+```
+
+
+

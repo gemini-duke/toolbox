@@ -58,6 +58,22 @@ Common to see phrases *"drug X reduces the risk of dying by 40%"* based on an ob
 
 ---
 
+# Date-Time formats
+```{r}
+# Here I pasted both variables together using "-" as a separator and then transformed into POSIXct using the appropriate format
+data$dt_time_ar_kcmc <- as.POSIXct(paste(data$datearrivekcmc, data$timearrivekcmc, sep="-"), format="%Y-%m-%d-%H:%M")
+
+
+###### Discharge - Using dc_date and dc_time
+# Here I pasted both variables together using "-" as a separator and then transformed into POSIXct using the appropriate format
+data$dt_time_left_kcmc <- as.POSIXct(paste(data$dc_date, data$dc_time, sep="-"),
+           format="%Y-%m-%d-%H:%M")
+
+##### Difference 
+# Here I calculated the difference between discharge and arrival at kcmc in days. Next, I transformed it in a numeric variable
+data$delta_days <- as.numeric(difftime(data$dt_time_left_kcmc, data$dt_time_ar_kcmc, units = "days"))
+
+```
 
 
 ---
