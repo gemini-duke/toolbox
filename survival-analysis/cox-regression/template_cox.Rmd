@@ -5,7 +5,7 @@ author: "João Vítor Souza"
 ---
 
 Packages required
-```{r}
+```{r, message=FALSE, warning=FALSE}
 # Essential packages 
 library(survival); library(survminer)
 # Useful packages
@@ -23,9 +23,10 @@ Variables of interest:
 * sex: Male=1 Female=2;
 
 ```{r}
-data(lung)
 head(lung)
 ```
+
+
 ## Check the distribution of time of survival
 
 Here we will also check for the differences between patients that were censored or not
@@ -35,6 +36,8 @@ lung %>% mutate(Status=factor(status, levels=c(1,2), labels=c("Censored", "Dead"
   geom_histogram(bins = 25, alpha = 0.6, position = "identity") + 
   labs(x = "Days survived", y = "N. of patients")
 ```
+
+## Censoring
 
 ## What if you need to calculate the time?
 
@@ -134,7 +137,7 @@ print(surv.f1,newpage = FALSE)
 ```{r}
 lung$sex1 <- factor(lung$sex, levels=c(1,2), labels=c("Male", "Female"))
 
-
+# specify event 1=event at time, 2=left censored, 3=interval censored
 fit <- survfit(Surv(time, status) ~ sex1 , data = lung)
 
 surv.sex <- ggsurvplot(fit=fit, data = lung, 
@@ -146,9 +149,21 @@ print(surv.sex,newpage = FALSE)
 ```
 ### Cox proportional hazards model
 
-Testing the effect of a single variable
+http://www.sthda.com/english/wiki/cox-proportional-hazards-model 
+
 ```{r}
 res.cox <- coxph(Surv(time, status) ~ sex1 , data = lung)
+res.cox
+```
+
+Interpret raw results
+```{r}
+
+```
+
+Testing the effect of a single variable
+```{r}
+
 res.cox %>% tbl_regression(exp = TRUE) %>% bold_p()
 ```
 
@@ -158,11 +173,11 @@ res.cox %>% tbl_regression(exp = TRUE) %>% bold_p()
 # Changing variable to factor
 lung$ph.ecog1 <- factor(lung$ph.ecog)
 # Include the variables you want to test with the time to event
-covariates <-  c("sex", "age", "ph.karno", "ph.ecog1")
+covariates <-  c( "age","sex1", "wt.loss", "ph.ecog1")
 # Use this list to include nice labels for the final table
-var_names <- list(sex~"Sex",
-                  age~"Age",
-                  ph.karno~"PH Karno",
+var_names <- list(age~"Age",
+                  sex1~"Sex",
+                  wt.loss~"Weight Loss",
                   ph.ecog1~"PH Ecog")
 
 tbl_univ <-
@@ -177,20 +192,164 @@ tbl_univ
 ```
 ### Multi-variate Cox proportonional hazards model
 ```{r}
-var_names <- list(sex~"Sex",
-                  age~"Age",
-                  ph.karno~"PH Karno",
-                  ph.ecog1~"PH Ecog")
+res.cox.multiv <- coxph(Surv(time, status) ~  age + sex1 + wt.loss + 
+                        ph.ecog1, data = lung) 
+res.cox.multiv
+```
 
-tbl_multiv <- coxph(Surv(time, status) ~ sex + age + ph.karno + ph.ecog1, data = lung) %>% 
+Generating a nice table of results
+```{r}
+var_names <- list(age~"Age",
+                  sex1~"Sex",
+                  wt.loss~"Weight Loss",
+                  ph.ecog1~"PH Ecog")
+tbl_multiv <- res.cox.multiv %>% 
   tbl_regression(label=var_names, exponentiate=TRUE) %>% bold_p() %>% bold_labels
 tbl_multiv
 
 ```
+
+
 Combining tables
 ```{r}
 tbl_merge(tbls=list(tbl_univ, tbl_multiv),
           tab_spanner=c("Univariate", "Multivariate"))
+```
+
+## Checking model assumptions
+
+After we have built our model it is necessary to check wether it is biased or violates assumptions.
+
+The tests we need to perform are:
+* Proportional hazards assumption;
+* Examining influential observations (or outliers).
+* Detecting non linearity in relationship between the log hazard and the covariates.
+
+In order to check for these, *Residuals* method are used. Common residuals for cox include:
+
+* Schoenfeld residuals to check the proportional hazards assumption;
+* Martingale residual to assess non linearity;
+* Deviance residual (symmetric transformation of the Martinguale residuals), to examine influential observations;
+
+[Complete guide - Sthda](http://www.sthda.com/english/wiki/cox-model-assumptions)
+
+```{r}
+res.cox.multiv
+```
+### Proportional hazard assumption
+
+```{r}
+test.ph <- cox.zph(res.cox.multiv)
+test.ph
+```
+
+```{r}
+plot.ph <- ggcoxzph(test.ph) 
+
+plot.new()
+print(plot.ph,newpage = FALSE)
+```
+
+Violations of proportional hazards assumption can be resolved by:
+
+* Adding covariate * time interaction
+* Stratification
+
+```{r}
+library(Greg)
+```
+
+```{r}
+lung.update <- lung %>% 
+  mutate(status= factor(status,
+                        levels=1:2,
+                        labels=c("Censored","Died")),
+         time=time/365.25,
+         sex=factor(sex,
+                    levels=1:2,
+                    labels=c("Male","Female")),
+         ph.ecog=factor(ph.ecog)
+         )
+```
+
+```{r}
+regular.model <- coxph(Surv(time, status=="Died") ~ sex + age + wt.loss + ph.ecog, data = lung.update)
+
+summary(regular.model)
+```
+
+```{r}
+
+split_lung <- lung.update %>% timeSplitter(by=.5,
+                                    event_var ="status",
+                                    time_var="time",
+                                    time_related_vars = "age")
+
+interval.model <-
+  update(regular.model, 
+         Surv(Start_time, Stop_time, status == "Died") ~ .,
+         data = split_lung)
+
+summary(interval.model)
+```
+
+```{r}
+library(htmlTable)
+cbind(Regular = coef(regular.model),
+      Interval = coef(interval.model),
+      Difference = coef(regular.model) - coef(interval.model)) %>% 
+  txtRound(digits = 5) %>% 
+  knitr::kable(align = "r")
+```
+
+```{r}
+cox.zph(regular.model) 
+```
+```{r}
+time.int.model <- update(interval.model,
+                         .~.+sex:Start_time)
+summary(time.int.model )
+```
+
+```{r}
+split_lung %<>% 
+  mutate(sex_start = sex * Start_time) 
+anova(time.int.model,
+      update(time.int.model, .~.+I(sex_start^2)))
+
+split_lung
+```
+
+
+
+
+
+### Examining influential observations
+```{r, message=FALSE, warning=FALSE}
+ggcoxdiagnostics(res.cox.multiv, type='dfbeta', linear.predictions = TRUE)
+```
+
+
+
+```{r}
+ggcoxdiagnostics(res.cox.multiv, type = "deviance",
+                 linear.predictions = FALSE, ggtheme = theme_bw())
+```
+
+
+### Testing non-linearity
+
+Necessary only for continuous covariates.
+
+Martingale residuals may present any value in the range (-INF, +1):
+
+* Residuals near 1 represents individuals that “died too soon”,
+* and large negative values correspond to individuals that “lived too long”.
+
+```{r, fig.height=5}
+age.lin_plot <- ggcoxfunctional(Surv(time, status) ~ age + log(age) + sqrt(age), data = lung)
+plot.new() 
+print(age.lin_plot,newpage = FALSE)
 ```
 
 
