@@ -7,7 +7,7 @@ author: "João Vítor Souza"
 Packages required
 ```{r, message=FALSE, warning=FALSE}
 # Essential packages 
-library(survival); library(survminer)
+library(survival); library(survminer); library(Greg)
 # Useful packages
 library(gtsummary); library(ggplot2); library(dplyr)
 ```
@@ -153,17 +153,25 @@ http://www.sthda.com/english/wiki/cox-proportional-hazards-model
 
 ```{r}
 res.cox <- coxph(Surv(time, status) ~ sex1 , data = lung)
-res.cox
+summary(res.cox)
 ```
+The above shows the raw output of the model. Here we can point out:
 
-Interpret raw results
+* **exp(coef)**, which translates into the Hazard Risk observed. 
+
+For this example, we have the HR of having the event being Female, compared to being Male. The above data shows that the class Female has ~40% reduction in the HR of the event (death).
+To simply put it, a HR >1 indicates increased risk and a HR <1 indicates reduced risk.
+
+* **se(coef)**, which is the standard error of the HR. It is used to calculate the confidence interval of the model;
+
+* **lower .95 upper .95**. The lower and upper boundaries of the confidence interval of the HR;
+
+* **Pr(>|z|)**, the result of statistical testing that determines whether the HR found is significant at a certain degree or not;
+
+* Likelihood ratio test, Wald test and Score (logrank) test are tests that evaluate if the model is significantlly different from the null model. The one most recommend for Cox regression is the likelihood ratio test.
+
+Now we can generate a nice table using `gtsummary`
 ```{r}
-
-```
-
-Testing the effect of a single variable
-```{r}
-
 res.cox %>% tbl_regression(exp = TRUE) %>% bold_p()
 ```
 
@@ -190,12 +198,23 @@ tbl_univ <-
   bold_p() %>% bold_labels() 
 tbl_univ
 ```
+For the table above, we can interpret that:
+* *Age* seems to have an significant influence on the survival rates. Each point increase in *Age* increases the HR by 0.02
+* *Females* have ~40% (HR=0.59) less risk of having the event than males (p<0.001). The CI ranges from 58% (HR=0.42) to 18%  (HR=0.82) less risk;
+* *Weight Loss* does not seem to be significant;
+* Having *Ph Ecog* of 1, 2 or 3 implies on significant higher risk of event HR=1.58, HR=2.73 and HR=8.69, respectively.For the table above, we can interpret that:
+* *Age* does not seem to have an important influence on the survival rates;
+* *Females* have ~40% (HR=0.56) less risk of having the event than males (p<0.001). The CI ranges from 60% (HR=0.40) to 21%  (HR=0.79) less risk;
+* *Weight Loss* does not seem to be significant;
+* Having *Ph Ecog* of 2 or 3 implies on significant higher risk of event compared to the reference. 
+
 ### Multi-variate Cox proportonional hazards model
 ```{r}
 res.cox.multiv <- coxph(Surv(time, status) ~  age + sex1 + wt.loss + 
                         ph.ecog1, data = lung) 
-res.cox.multiv
+summary(res.cox.multiv)
 ```
+The summary of the multivariate model follows the same format explained before
 
 Generating a nice table of results
 ```{r}
@@ -208,13 +227,22 @@ tbl_multiv <- res.cox.multiv %>%
 tbl_multiv
 
 ```
-
+For the table above, we can interpret that:
+* *Age* does not seem to have an important influence on the survival rates;
+* *Females* have ~40% (HR=0.56) less risk of having the event than males (p<0.001). The CI ranges from 60% (HR=0.40) to 21%  (HR=0.79) less risk;
+* *Weight Loss* does not seem to be significant;
+* Having *Ph Ecog* of 1, 2 or 3 implies on significant higher risk of event compared to the reference, HR=1.58, HR=2.73 and HR=8.69, respectively.
 
 Combining tables
 ```{r}
 tbl_merge(tbls=list(tbl_univ, tbl_multiv),
           tab_spanner=c("Univariate", "Multivariate"))
 ```
+By comparing both tables we can check the differences between univariate associations an the multivariate model.
+* *Age* is no longer significant when we control for other variables;
+* *Sex* is still significant and we see a small change in the HR/CI;
+* *Weight loss* is still not significant, albeit the p value shrunk;
+* *PH ecog* remains significant and the HR increased for all categories. In fact, even *ph ecog* 1 is now significant.
 
 ## Checking model assumptions
 
@@ -256,10 +284,6 @@ Violations of proportional hazards assumption can be resolved by:
 * Stratification
 
 ```{r}
-library(Greg)
-```
-
-```{r}
 lung.update <- lung %>% 
   mutate(status= factor(status,
                         levels=1:2,
@@ -273,6 +297,7 @@ lung.update <- lung %>%
 ```
 
 ```{r}
+library(Greg)
 regular.model <- coxph(Surv(time, status=="Died") ~ sex + age + wt.loss + ph.ecog, data = lung.update)
 
 summary(regular.model)
@@ -305,15 +330,18 @@ cbind(Regular = coef(regular.model),
 ```{r}
 cox.zph(regular.model) 
 ```
+
 ```{r}
 time.int.model <- update(interval.model,
                          .~.+sex:Start_time)
-summary(time.int.model )
+summary(time.int.model)
+
+
 ```
 
 ```{r}
-split_lung %<>% 
-  mutate(sex_start = sex * Start_time) 
+split_lung$sex_start = (split_lung$sex=="Male")*split_lung$Start_time
+
 anova(time.int.model,
       update(time.int.model, .~.+I(sex_start^2)))
 

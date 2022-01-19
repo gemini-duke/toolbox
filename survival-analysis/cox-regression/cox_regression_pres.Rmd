@@ -19,6 +19,8 @@ background-image: url("./fig/SURVIVAL.svg")
 background-position: center
 background-size: contain, 50% 50%, cover
 
+
+
 ---
 
 ## Time-to-event analysis
@@ -35,49 +37,205 @@ Will measure the likelihood of an event, starting from exposure:
 - From hospital **discharge** to **readmission** - life style;
 
 ---
-## Hazard ratio
 
-$$HR = Hazard \ in \ treatment arm / Hazard \ in \ control \ arm$$
+
+background-image: url("./fig/censoring01.svg")
+background-position: center
+background-size: contain, 50% 50%, cover
+
+
+---
+
+background-image: url("./fig/censoring02.svg")
+background-position: center
+background-size: contain, 50% 50%, cover
+
+
+---
+background-image: url("./fig/censoring03.svg")
+background-position: center
+background-size: contain, 50% 50%, cover
+
+
+---
+background-image: url("./fig/censoring04.svg")
+background-position: center
+background-size: contain, 50% 50%, cover
+
+---
+
+class: inverse, middle, center
+
+# Survival analysis in R
+
+.footnote[
+See [Code template](https://github.com/gemini-duke/toolbox/tree/main/survival-analysis/cox-regression), [Video-TBA]() and [SOP-TBD]()
+]
+
+---
+
+### Preparation
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+# Useful packages
+library(gtsummary); library(ggplot2); library(dplyr); library(Greg)
+```
+
 --
 
-Hazard: rate of an instantaneous event or the probability that an individual at time *t* has an event at that time;
+Packages
+```{r, warning=FALSE, message=FALSE}
+library(survival); library(survminer)
+```
+
+**Lung data set**
+
+* *status*: 1=alive at end of study, 2=dead;
+* *time*: survival time in days;
+* *sex*: 1=Male, 2=Female;
+
+```{r, echo=FALSE}
+knitr::kable(head(lung, n=3), format = 'html')
+```
+
+---
+
+```{r, echo=FALSE, eval=FALSE}
+# a <- surv.fit$plot
+# ggsave("ggsurv.svg",a,dpi=1000,width = 11, height = 7 )
+```
+
+## The survival object
+
+```{r, echo=TRUE,include=TRUE,eval=TRUE}
+fit <- survfit(Surv(time, status==2)~1, data = lung)
+print(fit)
+```
+
+---
+
+
+background-image: url("./fig/ggsurv1.png")
+background-position: center
+background-size: contain, 50% 50%, cover
+
+.pull-right[
+```{r, eval=FALSE}
+surv.fit <- 
+  ggsurvplot(fit = fit, xlab = "Days", 
+             ylab = "Overall survival probability")
+```
+]
+
+---
+
+## Comparing two groups
+
+```{r, echo=FALSE}
+lung1 <- lung %>% mutate(sex=car::recode(sex, "1='Male';2='Female'"))
+```
+
+```{r, echo=TRUE,include=TRUE,eval=TRUE}
+fit.sex <- survfit(Surv(time, status==2) ~ sex, data = lung1)
+print(fit.sex)
+```
+
+---
+
+
+background-image: url("./fig/ggsurvsex.png")
+background-position: center
+background-size: contain, 50% 50%, cover
+
+
+.pull-right[
+.
+```{r, eval=FALSE}
+ggsurvplot(fit= fit.sex,
+           conf.int=TRUE,  
+           pval = TRUE,
+           surv.median.line="hv")
+```
+
+]
+
+---
+
+## Cox (proportional hazards) regression
+
+> ... a semi-parametric model that can be used to fit univariable and multivariable regression models that have survival outcomes.
+
+--
+
+```{r, include=TRUE}
+cox1 <- coxph(Surv(time, status==2) ~ sex, data = lung1) 
+print(cox1)
+```
+
+---
+
+## Cox (proportional hazards) regression
+
+```{r}
+cox1 %>% tbl_regression(exponentiate=TRUE, label=list(sex~"Sex")) %>% bold_p() %>% bold_labels()
+```
+
+---
+
+## Hazard ratio
+
+
+$$HR = Hazard \ in \ treatment \ arm / Hazard \ in \ control \ arm$$
+
+
+Hazard: *rate of an instantaneous event* or the *probability* that an individual at time *t* has an event at that time, given that the individual survived thus far;
 
 e.g. you have a 1% chance to die from a condition in each day.
 
----
+--
 
-## Censoring
-
----
-
-## Relative hazard versus relative risk
-
-Common to see phrases *"drug X reduces the risk of dying by 40%"* based on an observed survival HR of 0.60;
-
-1 minus the HR **should not be interpreted as a risk reduction**;
+This risk is **small over any very short period**, but has a significant **cumulative effect** over time.
 
 ---
 
-# Date-Time formats
-```{r}
-# Here I pasted both variables together using "-" as a separator and then transformed into POSIXct using the appropriate format
-data$dt_time_ar_kcmc <- as.POSIXct(paste(data$datearrivekcmc, data$timearrivekcmc, sep="-"), format="%Y-%m-%d-%H:%M")
+## Hazard ratio
 
 
-###### Discharge - Using dc_date and dc_time
-# Here I pasted both variables together using "-" as a separator and then transformed into POSIXct using the appropriate format
-data$dt_time_left_kcmc <- as.POSIXct(paste(data$dc_date, data$dc_time, sep="-"),
-           format="%Y-%m-%d-%H:%M")
+Example: suppose that *upon diagnosis* a given disease carries a **1% hazard of dying per day**.
 
-##### Difference 
-# Here I calculated the difference between discharge and arrival at kcmc in days. Next, I transformed it in a numeric variable
-data$delta_days <- as.numeric(difftime(data$dt_time_left_kcmc, data$dt_time_ar_kcmc, units = "days"))
+--
 
-```
+This means that **chances of surviving one day** with that diagnosis are 99%. The next day carries the same hazard, thus -> Chances of **surviving 2 days** are 0.99 x 0.99 = 0.98
 
+--
+
+.pull-left[
+Following the same logic, the chances of:
+* surviving 2 weeks is 0.99¹⁴ = 0.87;
+* surviving 6 months is 0.99¹⁸⁰ = 0.16;
+
+]
+
+--
+
+.pull-right[
+If a new treatment **reduces the hazard of death by 40%** (HR=0.6), this means that chances of surviving 1 day are 0.994 (99.4%)
+* surviving 2 weeks is 0.99¹⁴ = 0.92;
+* surviving 6 months is 0.99¹⁸⁰ = 0.33;
+]
 
 ---
 
+background-image: url("./fig/Surv-Graph.png")
+background-position: center
+background-size: contain, 50% 50%, cover
+
+.footnote[
+[Andreas Sashegyi, 2017](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5388384/)
+]
+
+
+---
 
 ## References
 
@@ -86,3 +244,5 @@ data$delta_days <- as.numeric(difftime(data$dt_time_left_kcmc, data$dt_time_ar_k
 - [Interpreting hazard ratios](https://www.bmj.com/content/351/bmj.h4631.full)
 
 - [Survival Analysis Playlist - Zedstatistics](https://www.youtube.com/watch?v=v1QqpG0rR1k&list=PLTNMv857s9WUclZLm6OFUW3QcXgRa97jx&ab_channel=zedstatistics)
+
+
