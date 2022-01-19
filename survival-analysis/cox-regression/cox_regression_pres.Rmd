@@ -182,6 +182,25 @@ cox1 %>% tbl_regression(exponentiate=TRUE, label=list(sex~"Sex")) %>% bold_p() %
 
 ---
 
+## Controlling for other factors
+
+
+```{r, echo=FALSE}
+var_names <- list(sex~"Sex",
+                  age~"Age",
+                  wt.loss~"Weigth")
+```
+
+```{r}
+cox.mult <- coxph(Surv(time, status==2) ~ sex + age + wt.loss, data = lung1) 
+cox.mult %>%  tbl_regression(exponentiate=TRUE, label=var_names) %>% bold_labels() %>% bold_p()
+```
+
+
+---
+
+
+
 ## Hazard ratio
 
 
