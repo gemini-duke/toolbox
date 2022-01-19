@@ -263,7 +263,7 @@ class: inverse, middle, center
 # Imputation with `mice`
 
 .footnote[
-See [Codes](https://github.com/gemini-duke/toolbox/tree/main/missingness_analysis), [Video-TBA]() and [SOP-TBD]() and [miceVignettes](https://www.gerkovink.com/miceVignettes/) for materials on this section
+See [Codes](https://github.com/gemini-duke/toolbox/tree/main/missingness_analysis), [Video](https://drive.google.com/file/d/1DHqaUngAENOR29W3Wc4AIdEsJ9JzF8Qy/view?usp=sharing) and [SOP-TBD]() and [miceVignettes](https://www.gerkovink.com/miceVignettes/) for materials on this section
 ]
 
 ---
