@@ -69,7 +69,7 @@ class: inverse, middle, center
 # Survival analysis in R
 
 .footnote[
-See [Code template](https://github.com/gemini-duke/toolbox/tree/main/survival-analysis/cox-regression), [Video-TBA]() and [SOP-TBD]()
+See [Code template](https://github.com/gemini-duke/toolbox/tree/main/survival-analysis/cox-regression), [Video](https://drive.google.com/file/d/1J_0sUKwYG4gD_G3ivmlZNwn-NS3iYINV/view?usp=sharing) and [SOP-TBD]()
 ]
 
 ---

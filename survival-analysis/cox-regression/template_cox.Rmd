@@ -149,7 +149,6 @@ print(surv.sex,newpage = FALSE)
 ```
 ### Cox proportional hazards model
 
-http://www.sthda.com/english/wiki/cox-proportional-hazards-model 
 
 ```{r}
 res.cox <- coxph(Surv(time, status) ~ sex1 , data = lung)
@@ -246,7 +245,7 @@ By comparing both tables we can check the differences between univariate associa
 
 ## Checking model assumptions
 
-After we have built our model it is necessary to check wether it is biased or violates assumptions.
+After we have built our model it is necessary to check whether it is biased or violates assumptions.
 
 The tests we need to perform are:
 * Proportional hazards assumption;
@@ -317,6 +316,9 @@ interval.model <-
 
 summary(interval.model)
 ```
+```{r}
+# kaplan meyer sexo...
+```
 
 ```{r}
 library(htmlTable)
@@ -358,7 +360,8 @@ ggcoxdiagnostics(res.cox.multiv, type='dfbeta', linear.predictions = TRUE)
 ```
 
 
-
+variável adicional que não explica o desfecho..
+só com sexo
 ```{r}
 ggcoxdiagnostics(res.cox.multiv, type = "deviance",
                  linear.predictions = FALSE, ggtheme = theme_bw())
