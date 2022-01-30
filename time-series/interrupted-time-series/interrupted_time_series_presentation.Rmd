@@ -444,7 +444,7 @@ Mental health-related hospital admissions in Brazil --> stratify by **sex**, **e
 
 
 ```{r, echo=FALSE}
-adm <- read.csv("/media/newhd/joao-souza/projects/GEMINI/suicide_br_2020/mental_health_r.csv")
+adm <- read.csv("/media/newhd/joao-souza/projects/GEMINI/mental_health_covid/mental_health_r.csv")
 
 adm$casos <- 1
 
