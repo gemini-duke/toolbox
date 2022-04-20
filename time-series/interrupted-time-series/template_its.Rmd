@@ -1,0 +1,164 @@
+---
+title: "Template Interrupted time series"
+output: html_notebook
+author: "João Vítor Souza"
+---
+
+Loading packages and sample data set.
+```{r}
+library(astsa); library(forecast); library(dplyr); library(zoo); library(comprehenr);
+library(ggplot2); library(scales); library(gtsummary); library(foreign);library(tsModel); library("lmtest") ; library("Epi");library("splines") ; library("vcd")
+
+data <- read.csv("sicily.csv")
+```
+
+## Sample data set
+
+
+The **Sicily** dataset consistis of Acute Coronary Events (ACEs) registerd in Sicily befor and after the **ban of smoking in public places**. It is available as a suplementary material from the publication [Interrupted time series regression for the evaluation of public health interventions: a tutorial](https://academic.oup.com/ije/article/46/1/348/2622842#112547752).
+
+### Variables of interest
+
+* year: year of the event;
+* month: coded in ordinal number going from 1 (Jan) to 12 (Dec);
+* aces: sum of acute coronary events registered in that month;
+* time: numeric variable continuously counting how many periods have passed since the beginning of the study;
+* smokban: dummy variable indicating whether the period is before (0) or after (1) the ban of smoking in public places;
+* pop: population of Sicily;
+* stdpop: standardized population of Sicily.
+
+```{r}
+head(data)
+```
+
+## Explore ACE events
+
+```{r}
+### The months variable is coded as 1, 2 ... and I need it to be 01, 02..
+numbers <- c()
+for (i in as.character(data$month)){
+  if (nchar(i) ==1){
+    numbers <- c(numbers, paste("0",i, sep=""))
+  }
+  else {
+    numbers <- c(numbers, i)
+  }
+}
+# Creating a date column
+
+data$date <- as.POSIXct(paste(data$year, numbers, "01",sep='-'), format="%Y-%m-%d")
+data$smokban <- factor(data$smokban, levels=c(0,1),
+                       labels=c("Before","After"))
+```
+
+Plotting the series of cases
+```{r}
+data %>% 
+  ggplot(aes(x=date,y=aces, color=smokban)) + 
+  geom_point() + scale_fill_discrete(name="") + ylim(0,1200) + labs(x="Date", y="Monthly ACE counts")
+```
+
+## Summarizing events
+
+In the table below we do a simple comparison of median ACE events before and after the Ban of Smoking in public places. In addition to that, we create a variable that accounts for population growth (rate of ACEs/100,000). We can see how the difference is lost when we consider the growth of the population
+```{r, warning=FALSE, message=FALSE}
+data$rate <- with(data, aces/stdpop*10^5)
+
+var_names <- list(rate~"Rate ACE",
+                  aces~"Raw ACE")
+stat <-  all_continuous() ~ c("{median} ({p25}, {p75})", 
+                              "{min}, {max}", "{mean}, {sd}")
+types <- list(all_continuous() ~ "continuous2")
+
+data %>%
+  dplyr::select(aces,rate,smokban) %>% 
+  tbl_summary(by=smokban, label=var_names,statistic=stat, type=types,) %>% 
+  add_p() %>% bold_labels() %>% bold_p() %>%
+  as_gt() %>% gt::tab_header(gt::md("**ACE events before and after the smoke ban**"))
+```
+
+
+## Segmented regression
+
+Simplest and easiest way to model an ITS. Briefly, segmented (or *piecewise*) regression fits two regressions: **before** and **after** the intervention. 
+
+Notes:
+* Here we are proposing a level change. This is why the smokban variable is used as a dummy that changes to 1 after the ban. Other assumptions should take different modelling;
+* Here we use an offset as a log of the stdpop because the poisson distribution is not suited for a y variable that is a rate;
+* The poisson distribution is ideal for TS as we usually work with counts. The Poisson distribution has a positive and integer basis as you could not have something like -2 or 3.5 cases registered in a period.
+
+```{r}
+model1 <- glm(aces ~ offset(log(stdpop)) + smokban + time, family=poisson, data)
+summary(model1)
+```
+With the raw summary of the model we see that our estimate shows that ban of smoking caused a reduction of ~11% in the ACE events (p<0.001).
+
+Making a pretty table
+```{r}
+model1 %>%
+  tbl_regression(label=list(smokban~"Smoke ban", time~"Time")) %>%
+  bold_p() %>%
+  bold_labels() %>% as_gt() %>% gt::tab_header("Segmented regression model")
+```
+
+```{r}
+datanew <- data.frame(stdpop=mean(data$stdpop),
+                      smokban=factor(rep(c(0,1),c(36,24)),
+                                     levels=c(0,1),
+                                     labels=c("Before", "After")),
+                      time= 1:60,
+                      month=rep(01:12,5),
+                      year=c(rep(2002, 12),
+                             rep(2003, 12),
+                             rep(2004, 12),
+                             rep(2005, 12),
+                             rep(2006, 12)))
+pred1 <- predict(model1, type="response", datanew)
+
+getDates <- function(month, year){
+  numbers <- c()
+  for (i in as.character(month)){
+    if (nchar(i) ==1){
+      numbers <- c(numbers, paste("0",i, sep=""))
+    }
+    else {
+      numbers <- c(numbers, i)
+    }
+  }
+  date <- as.POSIXct(paste(year, month, "01",sep='-'), format="%Y-%m-%d")
+  return(date)
+  }
+
+datanew$date <- getDates(datanew$month, datanew$year)
+
+datanew$aces <- pred1
+
+
+# Counter-factual
+data.cont <- data.frame(stdpop=mean(data$stdpop),
+                        smokban=factor(rep(0,c(60)),
+                                     levels=c(0,1),
+                                     labels=c("Before", "After")),
+                        time= 1:60,
+                        month=rep(01:12,5),
+                        year=c(rep(2002, 12),
+                             rep(2003, 12),
+                             rep(2004, 12),
+                             rep(2005, 12),
+                             rep(2006, 12)))
+data.cont$date <- getDates(data.cont$month, data.cont$year)
+data.cont$aces <- predict(model1, type="response", data.cont)
+```
+
+```{r}
+data %>% 
+  ggplot(aes(x=date,y=aces, color=smokban)) +
+  geom_point() + 
+  geom_line(data=datanew) + 
+  geom_line(data=data.cont, linetype = "dashed") +
+  scale_fill_discrete(name="") + ylim(0,1200) + labs(x="Date", y="Monthly ACE counts")
+```
+
+
+
+
