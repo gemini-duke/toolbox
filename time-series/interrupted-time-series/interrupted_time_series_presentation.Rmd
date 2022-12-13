@@ -202,7 +202,7 @@ No limits regarding **number of points**, as power depends on other factors (e.g
 
 --
 
-More is **not allways better**: current trends versus historical trends;
+More is **not always better**: current trends versus historical trends;
 
 --
 
@@ -401,6 +401,17 @@ Box.test(model1$residuals, lag = 24, type = "Ljung-Box")
 
 ---
 
+### Other variables can be included...
+
+- Here we used: *time* (1~"end") and *smokban*(0/1) to model the values.
+
+We could work **differently according to impact proposed** and modelling strategy:
+- Time since the intervention;
+- Multiple interventions;
+- Difference to other time series;
+
+---
+
 ## ARIMA models
 
 Autoregressive Integrated Moving Average
@@ -434,69 +445,33 @@ class: inverse, middle, center
 
 # Case study
 
-### COVID-19 and mental health admissions in Brazil (2015-2020)
+### Newly-diagnosed tuberculosis (TB) cases before and "after" the pandemic
+
+---
+### Tuberculosis notification in Brazil
+
+**Questions**
+1. Did the pandemic cause a reduction in the diagnosis of TB?
+2. Where has this effect been more pronounced?
+3. COVID vaccines and "time" inflicted a recovery in TB diagnosis?
+
+Top-down analysis: *Country* -> *State* -> *health regions*
 
 ---
 
-## The data
-
-Mental health-related hospital admissions in Brazil --> stratify by **sex**, **ethnicity**, **state/region**, **age** and **ICD chapter**.
-
-
+Newly-diagnosed tuberculosis (TB) cases 
 ```{r, echo=FALSE}
-adm <- read.csv("/media/newhd/joao-souza/projects/GEMINI/mental_health_covid/mental_health_r.csv")
+tb <- read.csv("TB_cases.csv")
 
-adm$casos <- 1
-
-adm$DT_INTER_C <- as.POSIXct(as.character(adm$DT_INTER), format="%Y%m%d")
-
-cases <- adm %>% mutate(date=format(DT_INTER_C, "%Y-%m")) %>% 
-  group_by(date) %>% summarise(total = sum(casos))
+tb$DATE <- as.Date.character(paste(tb$YEAR, tb$MONTH, "01", sep="-"), format="%Y-%m-%d")
+tb$PANDEMIC <- if_else(tb$DATE >= as.Date("2020-03-01", format="%Y-%m-%d"), 1,0)
+tb$TIME <- seq(1:nrow(tb))
 ```
 
-```{r, echo=FALSE}
-rm(adm)
-```
-
-
-```{r, echo=FALSE}
-# Create time series object to facilitate filtering of the period
-cases.ts <- ts(as.numeric(cases$total), frequency=12, start=c(2007,12))
-```
-
-
-```{r, echo=FALSE}
-# Selecting values starting in January 2015
-filter <- (as.yearmon(time(cases.ts))>='Jan 2015')
-cases.ts.filter <- ts((cases.ts[filter]), frequency = 12, start=c(2015,01))
-# dummy variable that indicates if it was already pandemic
-pandemic <- as.numeric(as.yearmon(time(cases.ts.filter))>='Mar 2020')
-
-# data.frame with all the variables
-adm.2015 <- data.frame(year=to_vec(for(i in seq(2015,2020)) rep(i,12)),
-                         month=rep(seq(1,12),6),
-                         admissions=c(cases.ts.filter),
-                         time=seq(1,length(pandemic),1),
-                         pandemic=pandemic)
-```
-
-
-```{r, echo=FALSE, eval=TRUE}
-knitr::kable(head(adm.2015), format = 'html')
-```
-
----
-
-## The data
-```{r, fig.align = "center" ,fig.show=TRUE, echo=FALSE, eval=TRUE, fig.height=4, dev='svg', include=TRUE}
-
-plot(adm.2015$admissions,type="n",xlab="Year",ylab="Admissions",
-  bty="l",xaxt="n")
-rect(62,0,72,16000,col=grey(0.9),border=F)
-points(adm.2015$admissions,cex=0.7)
-axis(1,at=0:6*12,labels=F)
-axis(1,at=0:5*12+6,tick=F,labels=2015:2020)
-title("Overall mental health admissions - Brazil, 2015-2020")
+```{r, fig.width=12, echo=FALSE,, dev='svg', dpi=300, fig.alig="center"}
+tb %>% mutate(PANDEMIC=if_else(PANDEMIC==1, "During", "Before")) %>%  ggplot(aes(x=DATE, y=N, color=PANDEMIC)) + geom_point() + 
+  geom_line() + scale_x_date(breaks = "1 year", date_labels = "%Y") + 
+  theme(axis.text.x = element_text(angle = 90, vjust=0.3)) + xlab("Number of TB cases")
 ```
 
 ---
@@ -504,103 +479,140 @@ title("Overall mental health admissions - Brazil, 2015-2020")
 # Proposing a model
 
 ```{r, include=TRUE}
-model <- glm(admissions ~ pandemic + time, family=poisson, adm.2015) 
+model <- glm(N ~ PANDEMIC + TIME, family=poisson, tb) 
 ```
 
+```{r, echo=FALSE, include=FALSE, message=FALSE}
+checkresiduals(model)
+Box.test(model$residuals, lag = 24, type = "Ljung-Box")
+```
 
 ```{r, echo=FALSE, include=TRUE}
-model %>% tbl_regression(label=list(pandemic~"Pandemic", time~"Time")) %>% 
+model %>% tbl_regression(label=list(PANDEMIC~"Pandemic", TIME~"Time")) %>% 
   bold_p() %>% 
   bold_labels()
 ```
 
 ---
 
-## Plot model
+Plot model
 
-```{r, fig.align = "center" ,fig.show=TRUE, echo=FALSE, eval=TRUE, fig.height=4, dev='svg', include=TRUE}
-# datanew <- data.frame(stdpop=mean(data$stdpop),pandemic=rep(c(0,1),c(620,100)),
-#   time= 1:72/10,month=rep(1:120/10,5))
-datanew <- data.frame(pandemic=rep(c(0,1),c(620,100)),
-           time= 1:720/10,month=rep(1:120/10,6))
+```{r, fig.align = "center" ,fig.show=TRUE, echo=FALSE, eval=TRUE, fig.width=12, dev='svg', include=TRUE, dpi=300, warning=FALSE, message=FALSE}
+
+datanew <- data.frame(PANDEMIC=rep(c(0,1),c(230,10)),
+                      TIME= 1:240,MONTH=rep(1:12,20))
 # We generate predicted values based on the model in order to create a plot
 pred1 <- predict(model,type="response",datanew)
 
-plot(adm.2015$admissions,type="n",xlab="Year",ylab="Admissions",
-  bty="l",xaxt="n")
-rect(62,0,72,16000,col=grey(0.9),border=F)
-points(adm.2015$admissions,cex=0.7)
-axis(1,at=0:6*12,labels=F)
-axis(1,at=0:5*12+6,tick=F,labels=2015:2020)
-lines((1:720/10),pred1,col=2)
-title("Brazil, 2015-2020")
-
-
-# to plot the counterfactual scenario we create a data frame as if smokban
-#   (the intervention) was never being implemented
-datanew <- data.frame(pandemic=0,
-                      time= 1:720/10,month=rep(1:120/10,6))
+tb$pred1 <- pred1
+datanew <- data.frame(PANDEMIC=0,TIME= 1:240,MONTH=rep(1:12,20))
 
 pred1b <- predict(model,datanew,type="response")
-lines(datanew$time,pred1b,col=2,lty=2)
+tb$pred1b <- pred1b
+tb$pred1b <- if_else(tb$DATE >= as.Date("2020-03-01", format="%Y-%m-%d"), tb$pred1b, NA_real_)
+tb %>% mutate(PANDEMIC=if_else(PANDEMIC==1, "During", "Before")) %>%  ggplot(aes(x=DATE, y=N, color=PANDEMIC)) + geom_point(alpha = 0.3) + 
+  geom_line(alpha = 0.3) + scale_x_date(breaks = "1 year", date_labels = "%Y") +
+  theme(axis.text.x = element_text(angle = 90, vjust=0.3)) + ylab("Number of TB cases") +
+  geom_line(aes(x=DATE, y=pred1), linetype="dotted", alpha=2, size=1.1, color="red") +
+  geom_line(aes(x=DATE, y=pred1b), linetype="dotted", size=1.1, color="black")
+```
 
-# return the data frame to the scenario including the intervention
-datanew <- data.frame(pandemic=rep(c(0,1),c(620,100)),
-                      time=1:720/10,
-                      month=rep(1:120/10,6))
+---
+
+Working with the last 5 years
+
+```{r,echo=FALSE}
+tb <- tb %>% filter(YEAR >= 2016)
+tb$TIME <- seq(1:nrow(tb))
+
+model2 <- glm(N ~ PANDEMIC + TIME, family=poisson, tb) 
+```
+
+```{r , fig.show=TRUE, echo=FALSE, include=TRUE, warning=FALSE, fig.width=10, dev='svg', dpi=300, fig.align="center", fig.height=6}
+
+datanew <- data.frame(PANDEMIC=rep(c(0,1),c(50,10)),
+                      TIME= 1:60,MONTH=rep(1:12,5))
+# We generate predicted values based on the model in order to create a plot
+pred1 <- predict(model2,type="response",datanew)
+
+tb$pred1 <- pred1
+datanew <- data.frame(PANDEMIC=0,TIME= 1:60,MONTH=rep(1:12,5))
+
+pred1b <- predict(model2,datanew,type="response")
+tb$pred1b <- pred1b
+tb$pred1b <- if_else(tb$DATE >= as.Date("2020-03-01", format="%Y-%m-%d"), tb$pred1b, NA_real_)
+
+tb %>% mutate(PANDEMIC=if_else(PANDEMIC==1, "During", "Before")) %>%
+  ggplot(aes(x=DATE, y=N, color=PANDEMIC)) + geom_point(alpha = 0.3) + 
+  geom_line(alpha = 0.3) + scale_x_date(breaks = "1 year", date_labels = "%Y") +
+  theme(axis.text.x = element_text(angle = 90, vjust=0.3)) + ylab("Number of TB cases") +
+  geom_line(aes(x=DATE, y=pred1), linetype="dotted", alpha=2, size=1.1, color="red") +
+  geom_line(aes(x=DATE, y=pred1b), linetype="dotted", size=1.1, color="black") 
+
+
+```
+
+---
+
+## Working with the last 5 years
+
+
+```{r, echo=FALSE}
+model2 %>% tbl_regression() %>% bold_p() %>% bold_labels()
 ```
 
 ---
 
 ## Adjusting for seasonality
-<!-- There are various ways of adjusting for seasonality - here we use harmonic terms specifying the number of sin and cosine pairs to include (in this case 2) and the length of the period (12 months) -->
+
+There are various ways of adjusting for seasonality - here we use harmonic terms specifying the number of sin and cosine pairs to include (in this case 2) and the length of the period (12 months)
 
 ```{r, incldue=TRUE}
-model3 <- glm(admissions ~ pandemic + time + harmonic(month,2,12), 
-              family=quasipoisson, adm.2015)
+model3 <- glm(N ~ PANDEMIC + TIME + harmonic(MONTH,2,12),
+family=quasipoisson, tb)
 ```
 
 
 ```{r, echo=FALSE, include=FALSE}
-model3 %>%  tbl_regression(label=list(pandemic~"Pandemic", time~"Time")) %>% 
-  bold_p() %>% 
+model3 %>%  tbl_regression(label=list(PANDEMIC~"Pandemic", TIME~"Time")) %>%
+  bold_p() %>%
   bold_labels()
 
 ```
 
-```{r, echo=FALSE, include=FALSE}
-res3 <- residuals(model3,type="deviance")
-plot(res3,ylim=c(-5,10),pch=19,cex=0.7,col=grey(0.6),main="Residuals over time",
-  ylab="Deviance residuals",xlab="Date")
-abline(h=0,lty=2,lwd=2)
-acf(res3)
-pacf(res3)
-```
+---
 
+```{r , fig.show=TRUE, echo=FALSE, include=TRUE, warning=FALSE, fig.width=10, dev='svg', dpi=300, fig.align="center", fig.height=6}
+datanew <- data.frame(TIME=1:60,PANDEMIC=rep(c(0,1),c(50,10)),
+                      MONTH=rep(1:12,5))
 
-```{r, fig.align = "center" ,fig.show=TRUE, echo=FALSE, eval=TRUE, fig.height=4, dev='svg', include=TRUE}
+pred3c <- predict(model3,type="response",transform(datanew,MONTH=6))
+tb$pred3c <- pred3c
 
 pred3 <- predict(model3,type="response",datanew)
+tb$pred3 <- pred3
+datanew <- data.frame(TIME=1:60,PANDEMIC=0,
+                      MONTH=rep(1:12,5))
+pred3b <- predict(model3,type="response",datanew)
+tb$pred3b <- pred3b
 
-plot(adm.2015$admissions,type="n",xlab="Year",ylab="Admissions",
-  bty="l",xaxt="n")
 
-rect(62,0,72,16000,col=grey(0.9),border=F)
-points(adm.2015$admissions,cex=0.7)
-axis(1,at=0:6*12,labels=F)
-axis(1,at=0:5*12+6,tick=F,labels=2015:2020)
-lines((1:720/10),pred3,col=2)
-title("Brazil, 2015-2020")
+# tb %>% mutate(PANDEMIC=if_else(PANDEMIC==1, "During", "Before")) %>%
+#   ggplot(aes(x=DATE, y=N, color=PANDEMIC)) + geom_point(alpha = 0.3) + 
+#   geom_line(alpha = 0.3) + scale_x_date(breaks = "1 year", date_labels = "%Y") +
+#   theme(axis.text.x = element_text(angle = 90, vjust=0.3)) + ylab("Number of TB cases") + xlab("")+
+#   geom_line(aes(x=DATE, y=pred3), linetype="dotted", alpha=2, size=1.1, color="red") +
+#   geom_line(aes(x=DATE, y=pred3b), linetype="dotted", size=1.1, color="black") +
+#   geom_line(aes(x=DATE, y=pred3c), linetype="dotted", size=1.1, color="darkblue")
+tb %>% mutate(PANDEMIC=if_else(PANDEMIC==1, "During", "Before")) %>%
+  ggplot(aes(x=DATE, y=N, color=PANDEMIC)) + geom_point(alpha = 0.3) + 
+  geom_line(alpha = 0.3) + scale_x_date(breaks = "1 year", date_labels = "%Y") +
+  theme(axis.text.x = element_text(angle = 90, vjust=0.3)) + ylab("Number of TB cases") + xlab("")+
+  geom_line(aes(x=DATE, y=pred3), alpha=2, size=1.1, color="red") +
+  geom_line(aes(x=DATE, y=pred3b), size=1.1, color="black") +
+  geom_line(aes(x=DATE, y=pred3c), size=1.1, color="darkblue")
 
-# it is sometimes difficult to clearly see the change graphically in the
-#   seasonally adjusted model, therefore it can be useful to plot a straight
-#   line representing a 'deseasonalised' trend
-# this can be done by predicting all the observations for the same month, in
-#   this case we use June
-pred3b <- predict(model3,type="response",transform(datanew,month=6))
 
-#this can then be added to the plot as a dashed line
-lines(1:720/10,pred3b,col=2,lty=2)
 
 ```
 
@@ -610,7 +622,6 @@ class: inverse, middle, center
 
 # Thank you!
 
-## What should I cover next?
 
 #### João Vítor Perez de Souza
 
